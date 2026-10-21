@@ -117,6 +117,28 @@ function isMissingNativeModule(error: unknown): boolean {
   );
 }
 
+function applicationUri(value: string): string {
+  if (value.trim().toLowerCase() !== "youtube") return value;
+  return Platform.OS === "android" ? "vnd.youtube://" : "youtube://";
+}
+
+async function openConfiguredAction(action: NfcAction): Promise<void> {
+  if (action.actionType === "open_url") {
+    await Linking.openURL(action.val);
+    return;
+  }
+
+  try {
+    await Linking.openURL(applicationUri(action.val));
+  } catch (error) {
+    if (action.val.trim().toLowerCase() === "youtube") {
+      await Linking.openURL("https://www.youtube.com/");
+      return;
+    }
+    throw error;
+  }
+}
+
 export default function HomeScreen() {
   const [scannerState, setScannerState] = useState<ScannerState>({
     kind: "idle",
@@ -264,16 +286,7 @@ export default function HomeScreen() {
     if (matchedTag && matchedActions) {
       try {
         for (const action of matchedActions) {
-          if (action.actionType === "open_url") {
-            await Linking.openURL(action.val);
-          } else {
-            const appSchemes: Record<string, string> = {
-              youtube: "youtube://",
-            };
-            await Linking.openURL(
-              appSchemes[action.val.trim().toLowerCase()] ?? action.val,
-            );
-          }
+          await openConfiguredAction(action);
         }
       } catch {
         setScannerState({ kind: "open-error", tag: matchedTag });
@@ -298,13 +311,8 @@ export default function HomeScreen() {
         }
 
         setScannerState({ kind: "matched", tag: configuredTag });
-        const appSchemes: Record<string, string> = { youtube: "youtube://" };
         for (const action of configuredTag.actions) {
-          await Linking.openURL(
-            action.actionType === "open_url"
-              ? action.val
-              : (appSchemes[action.val.trim().toLowerCase()] ?? action.val),
-          );
+          await openConfiguredAction(action);
         }
       } catch {
         const configuredTag = findTagForSerial(nfcConfig, tag?.id);

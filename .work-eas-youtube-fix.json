@@ -1,0 +1,48 @@
+{
+  "id": "6ba09a02-298d-4dcd-97e2-31c23c748ad2",
+  "status": "FINISHED",
+  "platform": "ANDROID",
+  "artifacts": {
+    "buildUrl": "https://expo.dev/artifacts/eas/nqC-27tXfBQc2vO-_NfS5jqFFb1UuXeoWbcj0-CSI60.apk",
+    "applicationArchiveUrl": "https://expo.dev/artifacts/eas/nqC-27tXfBQc2vO-_NfS5jqFFb1UuXeoWbcj0-CSI60.apk"
+  },
+  "fingerprint": {
+    "id": "01a15dc1-9a26-754f-af0b-80cb7041d7d7",
+    "hash": "eda3cd855038ead4388419bc9172ff36625cf47d"
+  },
+  "initiatingActor": {
+    "id": "7502340b-0902-46a1-91b0-1456de0d519b",
+    "displayName": "rc_007"
+  },
+  "logFiles": [
+    "https://storage.googleapis.com/eas-workflows-production/logs/649430ec-5cf0-4999-a5bb-82b33ac17278/6ba09a02-298d-4dcd-97e2-31c23c748ad2/2026-10-21T09%3A18%3A56Z-72aedaa9-952c-4581-9928-fe4535d57fbc.txt?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=www-production%40exponentjs.iam.gserviceaccount.com%2F20261021%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20261021T093314Z&X-Goog-Expires=900&X-Goog-SignedHeaders=host&X-Goog-Signature=2b3061628d2aedc5ebcec03e7b4a846b909d263412fd20a1b931d0d3bdfc64263d1f825f44bd564479960732bccc31b0900a3a2f33f7984f7b0daef367fd31db817a4255365f2252442102b6114985d7372b80f2623e8457b79a7bf8ab517eaa874cdbcc13e032721717bd2b0b10bb20b29a454c184e85c24c0f4e6e25ddb72110a8131aaff10fd717747706fec693f63dedaa5310237f13eebd2559f1aa0a78303b1b48efcef38346576ff57e76dcc4403a69bb7c969420138a6efaf69f14c9cb849c00871b1740e5fe16faad4f7a897a216dd58e428a0742ebb442f299a83441391dd28908a5cf93cae5c6c975b68704d3cb1d25f20ba24ab2abdc6e4aaf21"
+  ],
+  "app": {
+    "id": "649430ec-5cf0-4999-a5bb-82b33ac17278",
+    "name": "nfcport",
+    "slug": "nfcport",
+    "ownerAccount": {
+      "id": "62db7236-d778-45fc-a722-14da28b38d20",
+      "name": "rc_007"
+    }
+  },
+  "distribution": "INTERNAL",
+  "buildProfile": "preview",
+  "appIdentifier": "space.manus.nfcport.t101623651546524",
+  "sdkVersion": "57.0.0",
+  "appVersion": "1.0.0",
+  "appBuildVersion": "1",
+  "gitCommitHash": "75afedb9a2229a593fd52f6cd82e5835237ec05a",
+  "gitCommitMessage": "added backend changes to fetch json frm db",
+  "priority": "NORMAL",
+  "createdAt": "2026-10-21T09:18:51.395Z",
+  "updatedAt": "2026-10-21T09:29:01.744Z",
+  "completedAt": "2026-10-21T09:29:01.593Z",
+  "expirationDate": "2026-11-04T09:18:51.424Z",
+  "isForIosSimulator": false,
+  "metrics": {
+    "buildWaitTime": 3844,
+    "buildQueueTime": 5196,
+    "buildDuration": 601158
+  }
+}
