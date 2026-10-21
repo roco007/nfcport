@@ -31,7 +31,8 @@ const env = {
   appName: "NFC Portfolio Launcher",
   appSlug: "nfcport",
   // Durable public asset URL used for project branding metadata.
-  logoUrl: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663611039175/PutWQxpfeFUCSNGw.png",
+  logoUrl:
+    "https://files.manuscdn.com/user_upload_by_module/session_file/310519663611039175/PutWQxpfeFUCSNGw.png",
   scheme: schemeFromBundleId,
   iosBundleId: bundleId,
   androidPackage: bundleId,
@@ -75,9 +76,9 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+    infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
+    },
   },
   android: {
     adaptiveIcon: {
@@ -111,6 +112,7 @@ const config: ExpoConfig = {
   plugins: [
     "expo-asset",
     "expo-router",
+    "./plugins/withNfcIntentFilters",
     [
       "react-native-nfc-manager",
       {
@@ -121,7 +123,8 @@ const config: ExpoConfig = {
     [
       "expo-audio",
       {
-        microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone.",
+        microphonePermission:
+          "Allow $(PRODUCT_NAME) to access your microphone.",
       },
     ],
     [

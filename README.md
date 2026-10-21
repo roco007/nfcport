@@ -21,3 +21,6 @@ The app uses `react-native-nfc-manager` 4.0.0 and its Expo config plugin. On iOS
 - [NFC Manager Android setup](https://github.com/revtel/react-native-nfc-manager/blob/main/docs/guide/android.md) — Android NFC permission and physical-device requirements.
 - [NFC Manager iOS setup](https://github.com/revtel/react-native-nfc-manager/blob/main/docs/guide/ios.md) — NFC usage description, Tag Reading capability, and provisioning requirements.
 - [Expo development builds](https://docs.expo.dev/develop/development-builds/introduction/) — custom native modules require a development build rather than Expo Go.
+
+
+pnpm exec eas build --platform android --profile preview --non-interactive --wait

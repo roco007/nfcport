@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -27,6 +27,7 @@ import {
   loadConfiguredApiHost,
   saveConfiguredApiHost,
 } from "@/lib/api-host";
+import type { TagEvent } from "react-native-nfc-manager";
 
 type ScannerState =
   | { kind: "idle" }
@@ -59,7 +60,7 @@ const scanCopy: Record<ScannerState["kind"], { title: string; body: string }> =
   {
     idle: {
       title: "Ready when you are",
-      body: "Tap below, then hold your phone close to one of the linked tags.",
+      body: "The NFC scanner starts automatically. Hold your phone close to a linked tag.",
     },
     scanning: {
       title: "Looking for your tag…",
@@ -131,6 +132,10 @@ export default function HomeScreen() {
     null,
   );
   const scanLock = useRef(false);
+  const backgroundManager = useRef<
+    (typeof import("react-native-nfc-manager"))["default"] | undefined
+  >(undefined);
+  const backgroundRegistration = useRef(false);
 
   const refreshConfig = async () => {
     setConfigStatus("loading");
@@ -276,9 +281,128 @@ export default function HomeScreen() {
     }
   };
 
+  const handleDetectedTag = useCallback(
+    async (tag: TagEvent | null | undefined) => {
+      if (scanLock.current) return;
+      scanLock.current = true;
+      setScannerState({ kind: "scanning" });
+
+      try {
+        const configuredTag = findTagForSerial(nfcConfig, tag?.id);
+        if (!configuredTag?.actions.length) {
+          setScannerState({
+            kind: "unknown",
+            serial: formatNfcSerial(tag?.id),
+          });
+          return;
+        }
+
+        setScannerState({ kind: "matched", tag: configuredTag });
+        const appSchemes: Record<string, string> = { youtube: "youtube://" };
+        for (const action of configuredTag.actions) {
+          await Linking.openURL(
+            action.actionType === "open_url"
+              ? action.val
+              : (appSchemes[action.val.trim().toLowerCase()] ?? action.val),
+          );
+        }
+      } catch {
+        const configuredTag = findTagForSerial(nfcConfig, tag?.id);
+        if (configuredTag) {
+          setScannerState({ kind: "open-error", tag: configuredTag });
+        } else {
+          setScannerState({ kind: "error" });
+        }
+      } finally {
+        scanLock.current = false;
+      }
+    },
+    [nfcConfig],
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== "android" || configStatus !== "ready") return;
+
+    let disposed = false;
+    let manager:
+      | (typeof import("react-native-nfc-manager"))["default"]
+      | undefined;
+
+    const handleBackgroundTag = (tag: unknown) => {
+      if (!disposed) void handleDetectedTag(tag as TagEvent | null);
+    };
+
+    const startAlwaysOnScanner = async () => {
+      try {
+        const nfcModule = await import("react-native-nfc-manager");
+        manager = nfcModule.default;
+        if (disposed) return;
+
+        await manager.start();
+        const supported = await manager.isSupported(nfcModule.NfcTech.Ndef);
+        if (!supported) {
+          setScannerState({ kind: "unsupported" });
+          return;
+        }
+        if (!(await manager.isEnabled())) {
+          setScannerState({ kind: "disabled" });
+          return;
+        }
+
+        manager.setEventListener(
+          nfcModule.NfcEvents.DiscoverTag,
+          handleBackgroundTag,
+        );
+        manager.setEventListener(
+          nfcModule.NfcEvents.DiscoverBackgroundTag,
+          handleBackgroundTag,
+        );
+        await manager.registerTagEvent({
+          isReaderModeEnabled: false,
+          invalidateAfterFirstRead: false,
+        });
+        backgroundManager.current = manager;
+        backgroundRegistration.current = true;
+        setScannerState({ kind: "scanning" });
+
+        // Android may launch the activity with an NFC intent while the app
+        // was backgrounded or not running. Read that pending tag after setup.
+        const launchTag = await manager.getLaunchTagEvent();
+        if (launchTag) handleBackgroundTag(launchTag);
+      } catch (error) {
+        if (disposed) return;
+        if (isPermissionError(error)) {
+          setScannerState({ kind: "permission" });
+        } else if (isMissingNativeModule(error)) {
+          setScannerState({ kind: "native-build-required" });
+        } else {
+          setScannerState({ kind: "error" });
+        }
+      }
+    };
+
+    void startAlwaysOnScanner();
+    return () => {
+      disposed = true;
+      if (manager) {
+        manager.setEventListener("NfcManagerDiscoverTag" as never, null);
+        manager.setEventListener(
+          "NfcManagerDiscoverBackgroundTag" as never,
+          null,
+        );
+        if (backgroundRegistration.current) {
+          void manager.unregisterTagEvent();
+        }
+      }
+      backgroundManager.current = undefined;
+      backgroundRegistration.current = false;
+    };
+  }, [configStatus, handleDetectedTag]);
+
   const configuredTags = getConfiguredTags(nfcConfig);
   const copy = scanCopy[scannerState.kind];
   const isScanning = scannerState.kind === "scanning";
+  const isAlwaysOnAndroid = Platform.OS === "android";
   const isFeedback = scannerState.kind !== "idle";
   const feedbackTone =
     scannerState.kind === "matched"
@@ -347,7 +471,11 @@ export default function HomeScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={
-              isScanning ? "Scanning for NFC tag" : "Scan an NFC tag"
+              isAlwaysOnAndroid
+                ? "Always-on background NFC scanner"
+                : isScanning
+                  ? "Scanning for NFC tag"
+                  : "Scan an NFC tag"
             }
             disabled={isScanning || configStatus !== "ready"}
             onPress={scanForPortfolio}
@@ -367,11 +495,13 @@ export default function HomeScreen() {
               <Ionicons name="scan-outline" size={20} color={COLORS.ink} />
             )}
             <Text style={styles.scanButtonText}>
-              {isScanning
-                ? "Scanning…"
-                : configStatus === "loading"
-                  ? "Loading tags…"
-                  : "Scan a tag"}
+              {isAlwaysOnAndroid
+                ? "Always-on background scanning"
+                : isScanning
+                  ? "Scanning…"
+                  : configStatus === "loading"
+                    ? "Loading tags…"
+                    : "Scan a tag"}
             </Text>
             {!isScanning && (
               <Ionicons name="arrow-forward" size={18} color={COLORS.ink} />

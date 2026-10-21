@@ -1,6 +1,6 @@
 # NFC Port standalone backend
 
-This folder contains the complete standalone backend service and its NFC action configuration. It has no package dependencies and does not use SQL.
+This folder contains the standalone backend service, which fetches NFC mappings from MySQL.
 
 ## Deploy on Render
 
@@ -26,6 +26,8 @@ The server listens on `0.0.0.0:3002` by default. Change the port with `PORT=3000
 ## Endpoints
 
 - `GET /api/health`
-- `GET /api/nfc-config`
+- `GET /api/nfc-config?userName=rc007` — returns the `nfcTagMapping` JSON for the given user. If `userName` is omitted or empty, it defaults to `rc007`.
 
-Edit `nfc-config.json` to change tag serials and actions. Set `NFC_CONFIG_PATH` to use a config file elsewhere.
+Configure the MySQL connection with `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, and `MYSQL_PASSWORD`. `MYSQL_DATABASE` is optional and defaults to `nfcPort`. The backend uses TLS with certificate validation; set `MYSQL_SSL_CA_PATH` to the trusted CA certificate file if the database provider requires a custom CA.
+
+For example, call `curl 'http://localhost:3002/api/nfc-config?userName=rc007'` after configuring the database environment variables.

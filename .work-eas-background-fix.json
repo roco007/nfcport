@@ -1,0 +1,48 @@
+{
+  "id": "306a05f5-e344-4ba9-9848-e3ab2e10c8e2",
+  "status": "FINISHED",
+  "platform": "ANDROID",
+  "artifacts": {
+    "buildUrl": "https://expo.dev/artifacts/eas/-w2QMgVEre-EwMdwyLuRjy7dp_EfeohlPLjGpmwBk_I.apk",
+    "applicationArchiveUrl": "https://expo.dev/artifacts/eas/-w2QMgVEre-EwMdwyLuRjy7dp_EfeohlPLjGpmwBk_I.apk"
+  },
+  "fingerprint": {
+    "id": "01a15d94-154b-7fd0-a795-700ec6af1bd9",
+    "hash": "4068bdbe98d4fb5778d717655ef39ca9d225f8ae"
+  },
+  "initiatingActor": {
+    "id": "7502340b-0902-46a1-91b0-1456de0d519b",
+    "displayName": "rc_007"
+  },
+  "logFiles": [
+    "https://storage.googleapis.com/eas-workflows-production/logs/649430ec-5cf0-4999-a5bb-82b33ac17278/306a05f5-e344-4ba9-9848-e3ab2e10c8e2/2026-10-21T08%3A29%3A11Z-4053153f-20d4-4882-a196-9d131bff9c8f.txt?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=www-production%40exponentjs.iam.gserviceaccount.com%2F20261021%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20261021T083024Z&X-Goog-Expires=900&X-Goog-SignedHeaders=host&X-Goog-Signature=01ff24db47ab1b78eb048364779764f5647fe7fbe1c86a03984f43dd3a6b6ebb0c210745951a32cec584cb938a2519122bacc11306096f44ea624428bdedb7dcfc37da02b6cc15d22e3046e297cfdc1491d4e9a5f4d50e3fd3d94a2bcc4d16dcb451c325fccfc6504da78eef7400a8aeea181dae028a7096eecf335ab3e91dc1b964f80343474dbb1a804bfd214ac1a019bcbc098d0ac06a23d66b70a6d32189d7e2a3b76938df7cdcfa19b132411bb854991ac47f9b03cb45b695448a2ddbf960aa1a16444236840f94c46814a254adc08f198cd37402ba776717aa823af720ad31f66a481ad95748321b781d2dd154fdb6db82800d99bfa173b0a179bb2248"
+  ],
+  "app": {
+    "id": "649430ec-5cf0-4999-a5bb-82b33ac17278",
+    "name": "nfcport",
+    "slug": "nfcport",
+    "ownerAccount": {
+      "id": "62db7236-d778-45fc-a722-14da28b38d20",
+      "name": "rc_007"
+    }
+  },
+  "distribution": "INTERNAL",
+  "buildProfile": "preview",
+  "appIdentifier": "space.manus.nfcport.t101623651546524",
+  "sdkVersion": "57.0.0",
+  "appVersion": "1.0.0",
+  "appBuildVersion": "1",
+  "gitCommitHash": "d56d05c917d11f814681ed60af9a0a6382a8837a",
+  "gitCommitMessage": "second commit",
+  "priority": "NORMAL",
+  "createdAt": "2026-10-21T08:29:08.255Z",
+  "updatedAt": "2026-10-21T08:38:50.068Z",
+  "completedAt": "2026-10-21T08:38:49.917Z",
+  "expirationDate": "2026-11-04T08:29:08.296Z",
+  "isForIosSimulator": false,
+  "metrics": {
+    "buildWaitTime": 1926,
+    "buildQueueTime": 5901,
+    "buildDuration": 573835
+  }
+}
