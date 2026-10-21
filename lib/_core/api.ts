@@ -42,7 +42,7 @@ export async function apiCall<T>(
     const response = await fetch(url, {
       ...options,
       headers,
-      credentials: "include",
+      credentials: options.credentials ?? "include",
     });
 
     console.log("[API] Response received");

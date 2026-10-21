@@ -1,18 +1,24 @@
 {
-  "1D:CF:1B:BA:1A:10:80": [
-    {
-      "actionType": "open_url",
-      "val": "https://my-portfolio-liard-gamma-98.vercel.app/"
-    }
-  ],
-  "1D:80:36:BA:1A:10:80": [
-    {
-      "actionType": "open_url",
-      "val": "https://roco007.github.io/my-portfolio/"
-    },
-    {
-      "actionType": "open_application",
-      "val": "Youtube"
-    }
-  ]
+  "1D:CF:1B:BA:1A:10:80": {
+    "name": "TagT0",
+    "actions": [
+      {
+        "actionType": "open_url",
+        "val": "https://my-portfolio-liard-gamma-98.vercel.app/"
+      }
+    ]
+  },
+  "1D:80:36:BA:1A:10:80": {
+    "name": "TagT1",
+    "actions": [
+      {
+        "actionType": "open_url",
+        "val": "https://roco007.github.io/my-portfolio/"
+      },
+      {
+        "actionType": "open_application",
+        "val": "Youtube"
+      }
+    ]
+  }
 }

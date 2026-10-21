@@ -13,12 +13,13 @@ import {
 } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import {
-  findActionsForTag,
+  findTagForSerial,
   formatNfcSerial,
-  getConfiguredDestinations,
+  getConfiguredTags,
   parseNfcConfig,
+  type ConfiguredNfcTag,
+  type NfcAction,
   type NfcConfig,
-  type PortfolioDestination,
 } from "@/lib/nfc/tag-routing";
 import { apiCall } from "@/lib/_core/api";
 import {
@@ -30,13 +31,13 @@ import {
 type ScannerState =
   | { kind: "idle" }
   | { kind: "scanning" }
-  | { kind: "matched"; destination: PortfolioDestination }
+  | { kind: "matched"; tag: ConfiguredNfcTag }
   | { kind: "unknown"; serial: string }
   | { kind: "unsupported" }
   | { kind: "disabled" }
   | { kind: "native-build-required" }
   | { kind: "permission" }
-  | { kind: "open-error"; destination: PortfolioDestination }
+  | { kind: "open-error"; tag: ConfiguredNfcTag }
   | { kind: "error" };
 
 const COLORS = {
@@ -126,12 +127,17 @@ export default function HomeScreen() {
   const [hostDraft, setHostDraft] = useState("");
   const [hostSaving, setHostSaving] = useState(false);
   const [hostMessage, setHostMessage] = useState("");
+  const [expandedTagSerial, setExpandedTagSerial] = useState<string | null>(
+    null,
+  );
   const scanLock = useRef(false);
 
   const refreshConfig = async () => {
     setConfigStatus("loading");
     try {
-      const response = await apiCall<unknown>("/api/nfc-config");
+      const response = await apiCall<unknown>("/api/nfc-config", {
+        credentials: "omit",
+      });
       setNfcConfig(parseNfcConfig(response));
       setConfigStatus("ready");
     } catch {
@@ -164,7 +170,9 @@ export default function HomeScreen() {
       setHostDraft(getConfiguredApiHost());
       setHostMessage("Host saved. Checking backend…");
       try {
-        const response = await apiCall<unknown>("/api/nfc-config");
+        const response = await apiCall<unknown>("/api/nfc-config", {
+          credentials: "omit",
+        });
         setNfcConfig(parseNfcConfig(response));
         setConfigStatus("ready");
         setHostMessage("Host saved and backend connected.");
@@ -191,8 +199,8 @@ export default function HomeScreen() {
       | undefined;
     let requestAttempted = false;
     let nextState: ScannerState | undefined;
-    let matchedDestination: PortfolioDestination | undefined;
-    let matchedActions: ReturnType<typeof findActionsForTag>;
+    let matchedTag: ConfiguredNfcTag | undefined;
+    let matchedActions: NfcAction[] | undefined;
 
     try {
       if (Platform.OS === "web") {
@@ -213,22 +221,12 @@ export default function HomeScreen() {
             requestAttempted = true;
             await nfcManager.requestTechnology(nfcModule.NfcTech.Ndef);
             const tag = await nfcManager.getTag();
-            const actions = findActionsForTag(nfcConfig, tag?.id);
+            const configuredTag = findTagForSerial(nfcConfig, tag?.id);
 
-            if (actions?.length) {
-              matchedActions = actions;
-              const urlAction = actions.find(
-                (action) => action.actionType === "open_url",
-              );
-              matchedDestination = {
-                serial: formatNfcSerial(tag?.id),
-                normalizedSerial: "",
-                label: urlAction
-                  ? new URL(urlAction.val).hostname
-                  : actions[0].val,
-                url: urlAction?.val ?? "",
-              };
-              nextState = { kind: "matched", destination: matchedDestination };
+            if (configuredTag?.actions.length) {
+              matchedTag = configuredTag;
+              matchedActions = configuredTag.actions;
+              nextState = { kind: "matched", tag: configuredTag };
             } else {
               nextState = {
                 kind: "unknown",
@@ -258,7 +256,7 @@ export default function HomeScreen() {
     }
 
     if (nextState) setScannerState(nextState);
-    if (matchedDestination && matchedActions) {
+    if (matchedTag && matchedActions) {
       try {
         for (const action of matchedActions) {
           if (action.actionType === "open_url") {
@@ -273,15 +271,12 @@ export default function HomeScreen() {
           }
         }
       } catch {
-        setScannerState({
-          kind: "open-error",
-          destination: matchedDestination,
-        });
+        setScannerState({ kind: "open-error", tag: matchedTag });
       }
     }
   };
 
-  const destinations = getConfiguredDestinations(nfcConfig);
+  const configuredTags = getConfiguredTags(nfcConfig);
   const copy = scanCopy[scannerState.kind];
   const isScanning = scannerState.kind === "scanning";
   const isFeedback = scannerState.kind !== "idle";
@@ -312,7 +307,7 @@ export default function HomeScreen() {
             <Text style={styles.readyLabel}>
               {configStatus === "loading"
                 ? "LOADING"
-                : `${destinations.length} TAGS`}
+                : `${configuredTags.length} TAGS`}
             </Text>
           </View>
         </View>
@@ -419,9 +414,7 @@ export default function HomeScreen() {
                 <Text style={styles.serialValue}>{scannerState.serial}</Text>
               )}
               {scannerState.kind === "matched" && (
-                <Text style={styles.serialValue}>
-                  {scannerState.destination.label}
-                </Text>
+                <Text style={styles.serialValue}>{scannerState.tag.name}</Text>
               )}
             </View>
           </View>
@@ -466,48 +459,85 @@ export default function HomeScreen() {
 
         <View style={styles.sectionHeader}>
           <View>
-            <Text style={styles.sectionKicker}>YOUR DESTINATIONS</Text>
+            <Text style={styles.sectionKicker}>YOUR TAGS</Text>
             <Text style={styles.sectionTitle}>
               {configStatus === "error"
                 ? "Configuration unavailable"
-                : "Configured NFC tags"}
+                : "Tap a tag to view its setup"}
             </Text>
           </View>
           <View style={styles.countBadge}>
             <Text style={styles.countText}>
-              {String(destinations.length).padStart(2, "0")}
+              {String(configuredTags.length).padStart(2, "0")}
             </Text>
           </View>
         </View>
 
         <View style={styles.destinationList}>
-          {destinations.map((destination, index) => (
-            <View
-              key={destination.normalizedSerial}
-              style={styles.destinationRow}
-            >
-              <View style={styles.destinationIndex}>
-                <Text style={styles.destinationIndexText}>
-                  {String(index + 1).padStart(2, "0")}
-                </Text>
+          {configuredTags.map((tag, index) => {
+            const isExpanded = expandedTagSerial === tag.normalizedSerial;
+            return (
+              <View key={tag.normalizedSerial}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${tag.name}, ${isExpanded ? "hide" : "show"} tag details`}
+                  accessibilityState={{ expanded: isExpanded }}
+                  onPress={() =>
+                    setExpandedTagSerial(
+                      isExpanded ? null : tag.normalizedSerial,
+                    )
+                  }
+                  style={({ pressed }) => [
+                    styles.destinationRow,
+                    pressed ? styles.tagRowPressed : undefined,
+                  ]}
+                >
+                  <View style={styles.destinationIndex}>
+                    <Text style={styles.destinationIndexText}>
+                      {String(index + 1).padStart(2, "0")}
+                    </Text>
+                  </View>
+                  <View style={styles.destinationDetails}>
+                    <Text style={styles.destinationName}>{tag.name}</Text>
+                  </View>
+                  <Ionicons
+                    name={isExpanded ? "chevron-up" : "chevron-down"}
+                    size={18}
+                    color={COLORS.muted}
+                  />
+                </Pressable>
+                {isExpanded && (
+                  <View style={styles.tagExpansion}>
+                    <Text style={styles.detailLabel}>SERIAL NUMBER</Text>
+                    <Text style={styles.destinationSerial} selectable>
+                      {tag.serial}
+                    </Text>
+                    <Text style={[styles.detailLabel, styles.actionsLabel]}>
+                      ACTIONS
+                    </Text>
+                    {tag.actions.map((action, actionIndex) => (
+                      <View
+                        key={`${tag.normalizedSerial}-${actionIndex}`}
+                        style={styles.actionRow}
+                      >
+                        <Text style={styles.actionType}>
+                          {action.actionType === "open_url"
+                            ? "Open URL"
+                            : "Open application"}
+                        </Text>
+                        <Text style={styles.actionValue} selectable>
+                          {action.val}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                {index < configuredTags.length - 1 && (
+                  <View style={styles.tagDivider} />
+                )}
               </View>
-              <View style={styles.destinationDetails}>
-                <Text style={styles.destinationName}>{destination.label}</Text>
-                <Text style={styles.destinationSerial}>
-                  {destination.serial}
-                </Text>
-                <Text style={styles.destinationUrl} selectable>
-                  {destination.url}
-                </Text>
-              </View>
-              <Ionicons
-                name="arrow-up-right-box"
-                size={17}
-                color={COLORS.muted}
-                style={styles.destinationArrow}
-              />
-            </View>
-          ))}
+            );
+          })}
         </View>
 
         <View style={styles.noteRow}>
@@ -844,6 +874,46 @@ const styles = StyleSheet.create({
     minWidth: 0,
     marginLeft: 12,
     marginRight: 8,
+  },
+  tagRowPressed: {
+    backgroundColor: "#F7F9F5",
+  },
+  tagDivider: {
+    height: 1,
+    marginLeft: 14,
+    backgroundColor: COLORS.line,
+  },
+  tagExpansion: {
+    paddingLeft: 61,
+    paddingRight: 16,
+    paddingBottom: 16,
+  },
+  detailLabel: {
+    marginTop: 3,
+    color: COLORS.muted,
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 1.1,
+  },
+  actionsLabel: {
+    marginTop: 13,
+  },
+  actionRow: {
+    marginTop: 8,
+    padding: 10,
+    borderRadius: 11,
+    backgroundColor: "#F3F5F1",
+  },
+  actionType: {
+    color: COLORS.inkSoft,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  actionValue: {
+    marginTop: 3,
+    color: COLORS.muted,
+    fontSize: 11,
+    lineHeight: 16,
   },
   destinationName: {
     color: COLORS.text,

@@ -4,7 +4,7 @@ A focused Expo app that reads an NFC tag serial number and runs the actions conf
 
 The app fetches `GET /api/nfc-config` when its home screen opens. The standalone backend service and its single JSON config are in `backend/`; configuration is a plain JSON file and does not use SQL.
 
-The JSON object's keys are NFC tag serial numbers. Each value is an ordered array of actions with `actionType` (`open_url` or `open_application`) and a string `val`. The parser also accepts the example's `ationType` spelling. Edit `backend/nfc-config.json` to change mappings. Set `NFC_CONFIG_PATH` if the file is stored elsewhere at runtime.
+The JSON object's keys are NFC tag serial numbers. Each value is an object containing a display `name` and an ordered `actions` array. Actions use `actionType` (`open_url` or `open_application`) and string `val`. The UI initially shows tag names; tap a tag to expand its serial number and action list. Edit `backend/nfc-config.json` to change mappings. Set `NFC_CONFIG_PATH` if the file is stored elsewhere at runtime.
 
 Serials are normalized for casing and common separators before lookup. Unknown tags remain in the app. `open_url` opens the given URL, while `open_application` opens an application URI; the value `Youtube` is mapped to `youtube://`.
 

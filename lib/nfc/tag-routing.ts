@@ -5,13 +5,16 @@ export interface NfcAction {
   val: string;
 }
 
-export type NfcConfig = Record<string, NfcAction[]>;
+export interface NfcTagConfig {
+  name: string;
+  actions: NfcAction[];
+}
 
-export interface PortfolioDestination {
+export type NfcConfig = Record<string, NfcTagConfig>;
+
+export interface ConfiguredNfcTag extends NfcTagConfig {
   serial: string;
   normalizedSerial: string;
-  label: string;
-  url: string;
 }
 
 /** NFC APIs may return serials with different separators or letter casing. */
@@ -19,59 +22,81 @@ export function normalizeNfcSerial(serial: string | null | undefined): string {
   return (serial ?? "").replace(/[^0-9a-f]/gi, "").toUpperCase();
 }
 
-/** Accepts both `actionType` and the `ationType` spelling in the example payload. */
+function parseActions(serial: string, input: unknown): NfcAction[] {
+  if (!Array.isArray(input)) {
+    throw new Error(`Actions for ${serial} must be an array`);
+  }
+  return input.map((rawAction) => {
+    if (!rawAction || typeof rawAction !== "object") {
+      throw new Error(`Invalid action for ${serial}`);
+    }
+    const action = rawAction as Record<string, unknown>;
+    const type = action.actionType ?? action.ationType;
+    if (
+      (type !== "open_url" && type !== "open_application") ||
+      typeof action.val !== "string" ||
+      !action.val.trim()
+    ) {
+      throw new Error(`Invalid action for ${serial}`);
+    }
+    return { actionType: type, val: action.val };
+  });
+}
+
+/** Parse serial-keyed named tags, while tolerating the earlier serial-to-array format. */
 export function parseNfcConfig(input: unknown): NfcConfig {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
-    throw new Error("NFC configuration must be a serial-to-actions object");
+    throw new Error("NFC configuration must be a serial-to-tag object");
   }
 
   const config: NfcConfig = {};
-  for (const [serial, rawActions] of Object.entries(input)) {
-    if (!Array.isArray(rawActions)) {
-      throw new Error(`Actions for ${serial} must be an array`);
+  for (const [serial, rawTag] of Object.entries(input)) {
+    if (Array.isArray(rawTag)) {
+      config[serial] = {
+        name: `Tag ${Object.keys(config).length + 1}`,
+        actions: parseActions(serial, rawTag),
+      };
+      continue;
     }
-    config[serial] = rawActions.map((rawAction) => {
-      if (!rawAction || typeof rawAction !== "object") {
-        throw new Error(`Invalid action for ${serial}`);
-      }
-      const action = rawAction as Record<string, unknown>;
-      const type = action.actionType ?? action.ationType;
-      if (
-        (type !== "open_url" && type !== "open_application") ||
-        typeof action.val !== "string" ||
-        !action.val.trim()
-      ) {
-        throw new Error(`Invalid action for ${serial}`);
-      }
-      return { actionType: type, val: action.val };
-    });
+    if (!rawTag || typeof rawTag !== "object") {
+      throw new Error(`Tag configuration for ${serial} must be an object`);
+    }
+    const tag = rawTag as Record<string, unknown>;
+    if (typeof tag.name !== "string" || !tag.name.trim()) {
+      throw new Error(`Tag name for ${serial} must be a non-empty string`);
+    }
+    config[serial] = {
+      name: tag.name.trim(),
+      actions: parseActions(serial, tag.actions),
+    };
   }
   return config;
 }
 
-export function findActionsForTag(
+export function findTagForSerial(
   config: NfcConfig,
   serial: string | null | undefined,
-): NfcAction[] | undefined {
+): ConfiguredNfcTag | undefined {
   const normalizedSerial = normalizeNfcSerial(serial);
   if (!normalizedSerial) return undefined;
   const entry = Object.entries(config).find(
-    ([configuredSerial]) => normalizeNfcSerial(configuredSerial) === normalizedSerial,
+    ([configuredSerial]) =>
+      normalizeNfcSerial(configuredSerial) === normalizedSerial,
   );
-  return entry?.[1];
+  if (!entry) return undefined;
+  return {
+    serial: entry[0],
+    normalizedSerial: normalizeNfcSerial(entry[0]),
+    ...entry[1],
+  };
 }
 
-export function getConfiguredDestinations(config: NfcConfig): PortfolioDestination[] {
-  return Object.entries(config).flatMap(([serial, actions]) => {
-    const urlAction = actions.find((action) => action.actionType === "open_url");
-    if (!urlAction) return [];
-    return [{
-      serial,
-      normalizedSerial: normalizeNfcSerial(serial),
-      label: new URL(urlAction.val).hostname,
-      url: urlAction.val,
-    }];
-  });
+export function getConfiguredTags(config: NfcConfig): ConfiguredNfcTag[] {
+  return Object.entries(config).map(([serial, tag]) => ({
+    serial,
+    normalizedSerial: normalizeNfcSerial(serial),
+    ...tag,
+  }));
 }
 
 export function formatNfcSerial(serial: string | null | undefined): string {
