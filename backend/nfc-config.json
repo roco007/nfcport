@@ -3,8 +3,8 @@
     "name": "TagT0",
     "actions": [
       {
-        "actionType": "open_application",
-        "val": "Youtube"
+        "actionType": "open_url",
+        "val": "https://www.instagram.com/roco_colaco/"
       }
     ]
   },
