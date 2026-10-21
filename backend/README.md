@@ -27,7 +27,10 @@ The server listens on `0.0.0.0:3002` by default. Change the port with `PORT=3000
 
 - `GET /api/health`
 - `GET /api/nfc-config?userName=rc007` — returns the `nfcTagMapping` JSON for the given user. If `userName` is omitted or empty, it defaults to `rc007`.
+- `POST /api/nfc-config?userName=rc007` — inserts or replaces that user's `nfcTagMapping` with the JSON object in the request body. If `userName` is omitted or empty, it defaults to `rc007`. The request body is limited to 1 MiB.
+
+The POST endpoint does not require authentication. Anyone who can reach the service can overwrite mappings for any `userName`; do not expose it publicly unless that is intentional.
 
 The backend loads `backend/.env` on startup; variables already set by the hosting environment take precedence. Configure `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, and `MYSQL_PASSWORD` in that file or in the hosting environment. For the configured Aiven service, use port `18082`; it is also the backend default. `MYSQL_DATABASE` is optional and defaults to `nfcPort`. This backend does not enable TLS; the database service must allow non-TLS connections. Keep `.env` private and do not commit it.
 
-For example, call `curl --get --data-urlencode 'userName=rc007' http://localhost:3002/api/nfc-config` after configuring the database environment variables.
+For example, call `curl --get --data-urlencode 'userName=rc007' http://localhost:3002/api/nfc-config` to read a mapping. To save one, send a JSON object with `curl --location --request POST 'http://localhost:3002/api/nfc-config?userName=rc007' --header 'Content-Type: application/json' --data @mapping.json`.

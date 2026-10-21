@@ -12,6 +12,34 @@ if (envResult.error && envResult.error.code !== "ENOENT") {
 const port = Number.parseInt(process.env.PORT || "3002", 10);
 const host = process.env.HOST || "0.0.0.0";
 let databasePool;
+const maxRequestBodyBytes = 1024 * 1024;
+
+function getUserName(url) {
+  return url.searchParams.get("userName")?.trim() || "rc007";
+}
+
+async function readJsonBody(request) {
+  const chunks = [];
+  let size = 0;
+
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > maxRequestBodyBytes) {
+      const error = new Error("Request body is too large");
+      error.statusCode = 413;
+      throw error;
+    }
+    chunks.push(chunk);
+  }
+
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    const error = new Error("Request body must contain valid JSON");
+    error.statusCode = 400;
+    throw error;
+  }
+}
 
 function getDatabasePool() {
   const { MYSQL_HOST, MYSQL_PASSWORD, MYSQL_USER } = process.env;
@@ -40,7 +68,7 @@ function getDatabasePool() {
 
 const server = createServer(async (request, response) => {
   response.setHeader("Access-Control-Allow-Origin", "*");
-  response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   response.setHeader("Cache-Control", "no-store");
 
@@ -58,7 +86,7 @@ const server = createServer(async (request, response) => {
 
   if (request.method === "GET" && url.pathname === "/api/nfc-config") {
     try {
-      const userName = url.searchParams.get("userName")?.trim() || "rc007";
+      const userName = getUserName(url);
       const [rows] = await getDatabasePool().execute(
         "SELECT `nfcTagMapping` FROM `nfcPort`.`user_nfc_mapping` WHERE `user` = ? LIMIT 1",
         [userName],
@@ -77,6 +105,52 @@ const server = createServer(async (request, response) => {
       console.error("[backend] Failed to load NFC config:", error.message);
       response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
       response.end(JSON.stringify({ error: "NFC configuration is unavailable" }));
+    }
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/nfc-config") {
+    try {
+      const userName = getUserName(url);
+      const config = await readJsonBody(request);
+      if (!config || typeof config !== "object" || Array.isArray(config)) {
+        response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ error: "Request body must be a JSON object" }));
+        return;
+      }
+
+      const pool = getDatabasePool();
+      const [existingRows] = await pool.execute(
+        "SELECT 1 FROM `nfcPort`.`user_nfc_mapping` WHERE `user` = ? LIMIT 1",
+        [userName],
+      );
+      const mapping = JSON.stringify(config);
+
+      if (existingRows.length > 0) {
+        await pool.execute(
+          "UPDATE `nfcPort`.`user_nfc_mapping` SET `nfcTagMapping` = ? WHERE `user` = ?",
+          [mapping, userName],
+        );
+      } else {
+        await pool.execute(
+          "INSERT INTO `nfcPort`.`user_nfc_mapping` (`user`, `nfcTagMapping`) VALUES (?, ?)",
+          [userName, mapping],
+        );
+      }
+
+      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify({ ok: true, userName }));
+    } catch (error) {
+      const statusCode = error.statusCode || 500;
+      if (statusCode === 500) {
+        console.error("[backend] Failed to save NFC config:", error.message);
+      }
+      response.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(
+        JSON.stringify({
+          error: statusCode === 500 ? "NFC configuration could not be saved" : error.message,
+        }),
+      );
     }
     return;
   }

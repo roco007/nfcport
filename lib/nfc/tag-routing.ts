@@ -3,6 +3,7 @@ export type NfcActionType = "open_url" | "open_application";
 export interface NfcAction {
   actionType: NfcActionType;
   val: string;
+  displayName?: string;
 }
 
 export interface NfcTagConfig {
@@ -39,7 +40,14 @@ function parseActions(serial: string, input: unknown): NfcAction[] {
     ) {
       throw new Error(`Invalid action for ${serial}`);
     }
-    return { actionType: type, val: action.val };
+    return {
+      actionType: type,
+      val: action.val,
+      displayName:
+        typeof action.displayName === "string" && action.displayName.trim()
+          ? action.displayName.trim()
+          : undefined,
+    };
   });
 }
 

@@ -664,7 +664,7 @@ export default function HomeScreen() {
                             : "Open application"}
                         </Text>
                         <Text style={styles.actionValue} selectable>
-                          {action.val}
+                          {action.displayName ?? action.val}
                         </Text>
                       </View>
                     ))}
