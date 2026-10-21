@@ -1,6 +1,13 @@
 import { createServer } from "node:http";
-import { readFileSync } from "node:fs";
+import { config as loadEnv } from "dotenv";
+import { fileURLToPath } from "node:url";
 import { createPool } from "mysql2/promise";
+
+const envPath = fileURLToPath(new URL("./.env", import.meta.url));
+const envResult = loadEnv({ path: envPath });
+if (envResult.error && envResult.error.code !== "ENOENT") {
+  throw envResult.error;
+}
 
 const port = Number.parseInt(process.env.PORT || "3002", 10);
 const host = process.env.HOST || "0.0.0.0";
@@ -12,18 +19,18 @@ function getDatabasePool() {
     throw new Error("MYSQL_HOST, MYSQL_USER, and MYSQL_PASSWORD must be configured");
   }
 
+  const mysqlPort = Number.parseInt(process.env.MYSQL_PORT || "18082", 10);
+  if (!Number.isInteger(mysqlPort) || mysqlPort < 1 || mysqlPort > 65535) {
+    throw new Error("MYSQL_PORT must be a valid TCP port");
+  }
+
   databasePool ??= createPool({
     host: MYSQL_HOST,
-    port: Number.parseInt(process.env.MYSQL_PORT || "3306", 10),
+    port: mysqlPort,
     user: MYSQL_USER,
     password: MYSQL_PASSWORD,
     database: process.env.MYSQL_DATABASE || "nfcPort",
-    ssl: {
-      rejectUnauthorized: true,
-      ca: process.env.MYSQL_SSL_CA_PATH
-        ? readFileSync(process.env.MYSQL_SSL_CA_PATH, "utf8")
-        : undefined,
-    },
+    connectTimeout: 10000,
     waitForConnections: true,
     connectionLimit: 5,
   });

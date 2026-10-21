@@ -28,6 +28,6 @@ The server listens on `0.0.0.0:3002` by default. Change the port with `PORT=3000
 - `GET /api/health`
 - `GET /api/nfc-config?userName=rc007` — returns the `nfcTagMapping` JSON for the given user. If `userName` is omitted or empty, it defaults to `rc007`.
 
-Configure the MySQL connection with `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, and `MYSQL_PASSWORD`. `MYSQL_DATABASE` is optional and defaults to `nfcPort`. The backend uses TLS with certificate validation; set `MYSQL_SSL_CA_PATH` to the trusted CA certificate file if the database provider requires a custom CA.
+The backend loads `backend/.env` on startup; variables already set by the hosting environment take precedence. Configure `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, and `MYSQL_PASSWORD` in that file or in the hosting environment. For the configured Aiven service, use port `18082`; it is also the backend default. `MYSQL_DATABASE` is optional and defaults to `nfcPort`. This backend does not enable TLS; the database service must allow non-TLS connections. Keep `.env` private and do not commit it.
 
-For example, call `curl 'http://localhost:3002/api/nfc-config?userName=rc007'` after configuring the database environment variables.
+For example, call `curl --get --data-urlencode 'userName=rc007' http://localhost:3002/api/nfc-config` after configuring the database environment variables.
