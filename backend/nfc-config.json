@@ -4,6 +4,10 @@
     "actions": [
       {
         "actionType": "open_url",
+        "val": "      https://www.instagram.com/roco_colaco/"
+      },
+      {
+        "actionType": "open_url",
         "val": "https://my-portfolio-liard-gamma-98.vercel.app/"
       }
     ]
