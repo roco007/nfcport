@@ -44,6 +44,13 @@ const migrations = [
       import.meta.url,
     ),
   },
+  {
+    id: "003_create_server_mapping",
+    url: new URL(
+      "../../migrations/003_create_server_mapping.sql",
+      import.meta.url,
+    ),
+  },
 ] as const;
 
 function hasUniqueUserIndex(rows: readonly MappingIndexRow[]): boolean {

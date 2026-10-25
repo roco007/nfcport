@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import {
   InMemoryNfcConfigRepository,
+  InMemoryServerMappingRepository,
   TEST_API_KEY,
   createTestConfig,
   silentLogger,
@@ -25,6 +26,7 @@ describe("NFC Port HTTP API", () => {
     app = createApp({
       config: createTestConfig(),
       repository,
+      serverMappingRepository: new InMemoryServerMappingRepository(),
       logger: silentLogger,
     });
   });
@@ -142,6 +144,7 @@ describe("NFC Port HTTP API", () => {
     const limitedApp = createApp({
       config: createTestConfig({ bodyLimitBytes: 32 }),
       repository: limitedRepository,
+      serverMappingRepository: new InMemoryServerMappingRepository(),
       logger: silentLogger,
     });
     const response = await request(limitedApp)

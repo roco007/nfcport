@@ -10,6 +10,7 @@ import {
   MySqlNfcConfigRepository,
   type NfcConfigRepository,
 } from "./repositories/nfc-config.repository.js";
+import { MySqlServerMappingRepository } from "./repositories/server-mapping.repository.js";
 
 const environmentPath = fileURLToPath(new URL("../.env", import.meta.url));
 const environmentResult = loadEnvironmentFile({
@@ -112,7 +113,16 @@ async function bootstrap(): Promise<void> {
     pool,
     config.database.queryTimeoutMs,
   );
-  const app = createApp({ config, repository, logger });
+  const serverMappingRepository = new MySqlServerMappingRepository(
+    pool,
+    config.database.queryTimeoutMs,
+  );
+  const app = createApp({
+    config,
+    repository,
+    serverMappingRepository,
+    logger,
+  });
   const server = createServer(app);
 
   server.requestTimeout = 15_000;

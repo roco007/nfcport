@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS `server_mapping` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `serverName` VARCHAR(255) NOT NULL,
+  `ipAddress` VARCHAR(45) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB;

@@ -66,3 +66,40 @@ export class InMemoryNfcConfigRepository implements NfcConfigRepository {
 
   public async close(): Promise<void> {}
 }
+
+export interface ServerMappingRecord {
+  readonly id: number;
+  readonly serverName: string;
+  readonly ipAddress: string;
+}
+
+export class InMemoryServerMappingRepository {
+  public readonly records = new Map<number, ServerMappingRecord>();
+  public nextId = 1;
+  public error: Error | undefined;
+
+  public async list(): Promise<ServerMappingRecord[]> {
+    if (this.error !== undefined) throw this.error;
+    return [...this.records.values()].sort((left, right) => left.id - right.id);
+  }
+
+  public async create(
+    input: Omit<ServerMappingRecord, "id">,
+  ): Promise<ServerMappingRecord> {
+    if (this.error !== undefined) throw this.error;
+    const server = { id: this.nextId++, ...input };
+    this.records.set(server.id, server);
+    return server;
+  }
+
+  public async update(
+    id: number,
+    input: Omit<ServerMappingRecord, "id">,
+  ): Promise<ServerMappingRecord | null> {
+    if (this.error !== undefined) throw this.error;
+    if (!this.records.has(id)) return null;
+    const server = { id, ...input };
+    this.records.set(id, server);
+    return server;
+  }
+}

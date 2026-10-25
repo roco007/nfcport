@@ -8,19 +8,24 @@ import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
 import { createGlobalRateLimiter } from "./middleware/rate-limit.js";
 import { createHttpLogger } from "./observability/logger.js";
 import type { NfcConfigRepository } from "./repositories/nfc-config.repository.js";
+import type { ServerMappingRepository } from "./repositories/server-mapping.repository.js";
 import { createHealthRouter } from "./routes/health.routes.js";
 import { createNfcConfigRouter } from "./routes/nfc-config.routes.js";
+import { createServerMappingRouter } from "./routes/server-mapping.routes.js";
 import { NfcConfigService } from "./services/nfc-config.service.js";
+import { ServerMappingService } from "./services/server-mapping.service.js";
 
 interface CreateAppOptions {
   readonly config: AppConfig;
   readonly repository: NfcConfigRepository;
+  readonly serverMappingRepository: ServerMappingRepository;
   readonly logger: Logger;
 }
 
 export function createApp({
   config,
   repository,
+  serverMappingRepository,
   logger,
 }: CreateAppOptions): Express {
   const app = express();
@@ -77,6 +82,13 @@ export function createApp({
   const apiRouter = createNfcConfigRouter(config, nfcConfigService);
   app.use("/api", apiRouter);
   app.use("/api/v1", apiRouter);
+
+  const serverMappingRouter = createServerMappingRouter(
+    config,
+    new ServerMappingService(serverMappingRepository),
+  );
+  app.use("/api", serverMappingRouter);
+  app.use("/api/v1", serverMappingRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
