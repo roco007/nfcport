@@ -14,6 +14,9 @@ function applicationUri(value: string): string {
 
 export async function executeNfcAction(action: NfcAction): Promise<void> {
   const server = isServerAction(action);
+  if (action.actionType === "command" && !server) {
+    throw new Error("Commands require a server target.");
+  }
   if (server || action.actionType === "trigger") {
     const url = server ? serverActionUrl(action) : triggerUrl(action.val);
     const controller = new AbortController();

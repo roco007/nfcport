@@ -62,11 +62,12 @@ const publicRuntime = {
 const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
+  owner: "roco_007",
   version: "1.0.0",
   extra: {
     ...publicRuntime,
     eas: {
-      projectId: "649430ec-5cf0-4999-a5bb-82b33ac17278",
+      projectId: "664109da-9353-4bcd-b415-dabfb5e106cf",
     },
   },
   orientation: "portrait",

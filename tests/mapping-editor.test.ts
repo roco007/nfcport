@@ -16,6 +16,47 @@ const ids = () => {
 };
 
 describe("editable NFC mapping drafts", () => {
+  it("roundtrips server commands with editable paths and additional fields", () => {
+    const draft = importDraftFromJson(
+      JSON.stringify({
+        "AA:BB": {
+          name: "Desk",
+          actions: [
+            {
+              actionType: "command",
+              target: "server",
+              serverBaseUrl: "http://nfc-lappy.local:3001/",
+              val: " /unlock/ ",
+              displayName: "Unlock laptop",
+              icon: "lock",
+            },
+          ],
+        },
+      }),
+      ids(),
+    );
+    expect(draft[0].actions[0]).toMatchObject({
+      actionType: "command",
+      target: "server",
+      serverBaseUrl: "http://nfc-lappy.local:3001",
+      val: "unlock",
+      displayName: "Unlock laptop",
+      extra: { icon: "lock" },
+    });
+    const exported = JSON.parse(exportDraftAsJson(draft));
+    expect(exported["AA:BB"].actions[0]).toEqual({
+      actionType: "command",
+      target: "server",
+      serverBaseUrl: "http://nfc-lappy.local:3001",
+      val: "unlock",
+      displayName: "Unlock laptop",
+      icon: "lock",
+    });
+    expect(
+      configFromDraft(importDraftFromJson(JSON.stringify(exported), ids())),
+    ).toEqual(exported);
+  });
+
   it.each([
     {
       legacy: "http://laptop.local:3001/open/Visual%20Studio%20Code",
@@ -80,6 +121,7 @@ describe("editable NFC mapping drafts", () => {
 
   it.each([
     "http://laptop.local:3001/custom",
+    "http://laptop.local:3001/unlock",
     "http://laptop.local:3001/open/Notes?mode=quiet",
     "http://laptop.local:3001/open/Notes/extra",
     "http://user:pass@laptop.local:3001/open/Notes",

@@ -1,11 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ServerMappingSelector } from "@/components/server-mapping-selector";
 import type { ActionDraft } from "@/lib/nfc/mapping-editor";
+import { serverActionUrl, type NfcActionTarget } from "@/lib/nfc/tag-routing";
 import {
-  normalizeServerBaseUrl,
-  type NfcActionTarget,
-} from "@/lib/nfc/tag-routing";
+  serverMappingBaseUrl,
+  type ServerMapping,
+} from "@/lib/nfc/server-mappings";
 
 const GROUPS = [
   {
@@ -25,6 +27,10 @@ const CHOICES = [
   { type: "open_application", label: "Open App", icon: "apps-outline" },
   { type: "open_url", label: "Open URL", icon: "globe-outline" },
 ] as const;
+const SERVER_CHOICES = [
+  ...CHOICES,
+  { type: "command", label: "Commands", icon: "terminal-outline" },
+] as const;
 
 type Props = {
   action: ActionDraft;
@@ -33,6 +39,11 @@ type Props = {
   defaultServerBaseUrl: string;
   onChange: (patch: Partial<ActionDraft>) => void;
   onRememberServerBaseUrl: (value: string) => Promise<void>;
+  serverMappings: readonly ServerMapping[];
+  serverMappingsLoading: boolean;
+  serverMappingsError: string | null;
+  onRefreshServers: () => void;
+  onManageServers: (onSelected?: (server: ServerMapping) => void) => void;
 };
 
 export function NfcActionEditor({
@@ -42,11 +53,17 @@ export function NfcActionEditor({
   defaultServerBaseUrl,
   onChange,
   onRememberServerBaseUrl,
+  serverMappings,
+  serverMappingsLoading,
+  serverMappingsError,
+  onRefreshServers,
+  onManageServers,
 }: Props) {
   const [baseMessage, setBaseMessage] = useState("");
   const legacyTrigger = action.actionType === "trigger";
   const serverAction = action.target === "server" && !legacyTrigger;
   const appAction = action.actionType === "open_application";
+  const commandAction = action.actionType === "command";
 
   const rememberBase = async (value = action.serverBaseUrl) => {
     if (!serverAction) return;
@@ -64,7 +81,7 @@ export function NfcActionEditor({
 
   const choose = (
     target: NfcActionTarget,
-    actionType: "open_application" | "open_url",
+    actionType: Exclude<ActionDraft["actionType"], "trigger">,
   ) => {
     if (serverAction) void rememberBase();
     setBaseMessage("");
@@ -79,12 +96,26 @@ export function NfcActionEditor({
     });
   };
 
-  let baseInvalid = false;
-  if (serverAction) {
+  const selectServer = (server: ServerMapping) => {
     try {
-      normalizeServerBaseUrl(action.serverBaseUrl);
+      const serverBaseUrl = serverMappingBaseUrl(server.ipAddress);
+      setBaseMessage("");
+      onChange({ serverBaseUrl });
+      void rememberBase(serverBaseUrl);
+    } catch (error) {
+      setBaseMessage(
+        error instanceof Error
+          ? error.message
+          : "Choose a server with a valid IP address.",
+      );
+    }
+  };
+  let commandUrl = "";
+  if (serverAction && commandAction) {
+    try {
+      commandUrl = serverActionUrl(action);
     } catch {
-      baseInvalid = true;
+      // Keep the draft editable while the base URL or command is incomplete.
     }
   }
 
@@ -107,42 +138,44 @@ export function NfcActionEditor({
               </View>
             </View>
             <View style={styles.choices}>
-              {CHOICES.map((choice) => {
-                const checked =
-                  !legacyTrigger &&
-                  action.target === group.target &&
-                  action.actionType === choice.type;
-                return (
-                  <Pressable
-                    key={choice.type}
-                    accessibilityRole="radio"
-                    accessibilityLabel={`${group.label}: ${choice.label} for ${label}`}
-                    accessibilityState={{ checked, disabled }}
-                    disabled={disabled}
-                    onPress={() => choose(group.target, choice.type)}
-                    style={({ pressed }) => [
-                      styles.choice,
-                      checked && styles.choiceSelected,
-                      pressed && !checked && styles.choicePressed,
-                      disabled && styles.disabled,
-                    ]}
-                  >
-                    <Ionicons
-                      name={choice.icon}
-                      size={17}
-                      color={checked ? "#FFFFFF" : "#1D3A30"}
-                    />
-                    <Text
-                      style={[
-                        styles.choiceText,
-                        checked && styles.choiceTextSelected,
+              {(group.target === "server" ? SERVER_CHOICES : CHOICES).map(
+                (choice) => {
+                  const checked =
+                    !legacyTrigger &&
+                    action.target === group.target &&
+                    action.actionType === choice.type;
+                  return (
+                    <Pressable
+                      key={choice.type}
+                      accessibilityRole="radio"
+                      accessibilityLabel={`${group.label}: ${choice.label} for ${label}`}
+                      accessibilityState={{ checked, disabled }}
+                      disabled={disabled}
+                      onPress={() => choose(group.target, choice.type)}
+                      style={({ pressed }) => [
+                        styles.choice,
+                        checked && styles.choiceSelected,
+                        pressed && !checked && styles.choicePressed,
+                        disabled && styles.disabled,
                       ]}
                     >
-                      {choice.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+                      <Ionicons
+                        name={choice.icon}
+                        size={17}
+                        color={checked ? "#FFFFFF" : "#1D3A30"}
+                      />
+                      <Text
+                        style={[
+                          styles.choiceText,
+                          checked && styles.choiceTextSelected,
+                        ]}
+                      >
+                        {choice.label}
+                      </Text>
+                    </Pressable>
+                  );
+                },
+              )}
             </View>
             {group.target === "server" && legacyTrigger ? (
               <Text style={styles.legacy}>
@@ -152,35 +185,17 @@ export function NfcActionEditor({
             ) : null}
             {group.target === "server" && serverAction ? (
               <View>
-                <Text style={styles.fieldLabel}>SERVER BASE URL</Text>
-                <TextInput
-                  accessibilityLabel={`Server base URL for ${label}`}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={!disabled}
-                  keyboardType="url"
-                  onChangeText={(serverBaseUrl) => {
-                    setBaseMessage("");
-                    onChange({ serverBaseUrl });
-                    // Save/Add can keep this field focused on Android.
-                    try {
-                      normalizeServerBaseUrl(serverBaseUrl);
-                      void rememberBase(serverBaseUrl);
-                    } catch {
-                      // Allow incomplete input; blur/save will explain errors.
-                    }
-                  }}
-                  onBlur={() => void rememberBase()}
-                  placeholder="http://nfc-lappy.local:3001"
-                  placeholderTextColor="#78877F"
-                  spellCheck={false}
-                  style={[
-                    styles.input,
-                    baseMessage && baseInvalid
-                      ? styles.inputInvalid
-                      : undefined,
-                  ]}
+                <Text style={styles.fieldLabel}>SERVER</Text>
+                <ServerMappingSelector
+                  label={label}
                   value={action.serverBaseUrl}
+                  servers={serverMappings}
+                  loading={serverMappingsLoading}
+                  error={serverMappingsError}
+                  disabled={disabled}
+                  onSelect={selectServer}
+                  onRefresh={onRefreshServers}
+                  onManage={() => onManageServers(selectServer)}
                 />
                 <Text
                   accessibilityLiveRegion="polite"
@@ -202,25 +217,29 @@ export function NfcActionEditor({
       <Text style={styles.fieldLabel}>
         {appAction
           ? "APP NAME"
-          : legacyTrigger
-            ? "EXISTING TRIGGER URL"
-            : "URL TO OPEN"}
+          : commandAction
+            ? "COMMAND"
+            : legacyTrigger
+              ? "EXISTING TRIGGER URL"
+              : "URL TO OPEN"}
       </Text>
       <TextInput
         accessibilityLabel={`Target for ${label}`}
         autoCapitalize="none"
         autoCorrect={false}
         editable={!disabled}
-        keyboardType={appAction ? "default" : "url"}
+        keyboardType={appAction || commandAction ? "default" : "url"}
         onChangeText={(val) => onChange({ val })}
         placeholder={
           appAction
             ? serverAction
               ? "e.g. Spotify or Calculator"
               : "e.g. WhatsApp or YouTube"
-            : legacyTrigger
-              ? "http://nfc-lappy.local:3001/health"
-              : "Paste a website, video or playlist link"
+            : commandAction
+              ? "unlock"
+              : legacyTrigger
+                ? "http://nfc-lappy.local:3001/health"
+                : "Paste a website, video or playlist link"
         }
         placeholderTextColor="#78877F"
         spellCheck={false}
@@ -230,14 +249,30 @@ export function NfcActionEditor({
       <Text style={[styles.hint, styles.inputHint]}>
         {legacyTrigger
           ? "Sends a request without opening anything on your phone."
-          : serverAction
-            ? appAction
-              ? "Use the app name as it appears on your computer."
-              : "YouTube and YouTube Music media links play in their installed web apps. Other links open on your computer."
-            : appAction
-              ? "Use the installed Android app name. Package IDs and existing deep links also work."
-              : "Opens on this device using its default app for the link."}
+          : commandAction
+            ? "Sends a request directly to this command on your server."
+            : serverAction
+              ? appAction
+                ? "Use the app name as it appears on your computer."
+                : "YouTube and YouTube Music media links play in their installed web apps. Other links open on your computer."
+              : appAction
+                ? "Use the installed Android app name. Package IDs and existing deep links also work."
+                : "Opens on this device using its default app for the link."}
       </Text>
+      {serverAction && commandAction ? (
+        <View style={styles.commandPreview}>
+          <Text style={styles.previewLabel}>EFFECTIVE URL</Text>
+          <Text
+            accessibilityLabel={`Effective URL for ${label}`}
+            accessibilityLiveRegion="polite"
+            selectable
+            style={styles.previewUrl}
+          >
+            {commandUrl ||
+              "Enter a valid server URL and command to preview the request."}
+          </Text>
+        </View>
+      ) : null}
       <Text style={styles.fieldLabel}>
         DISPLAY NAME <Text style={styles.optional}>(optional)</Text>
       </Text>
@@ -314,7 +349,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   inputHint: { marginTop: 6 },
-  inputInvalid: { borderColor: "#874316" },
+  commandPreview: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: "#EDF8D9",
+    gap: 5,
+  },
+  previewLabel: {
+    color: "#596861",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  previewUrl: { color: "#1D3A30", fontSize: 12, lineHeight: 18 },
   error: { color: "#874316" },
   legacy: { marginTop: 9, color: "#874316", fontSize: 12, lineHeight: 18 },
 });

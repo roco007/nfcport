@@ -34,6 +34,91 @@ const config = parseNfcConfig({
 });
 
 describe("client and server action mappings", () => {
+  it.each([
+    ["unlock", "unlock", "http://nfc-lappy.local:3001/unlock"],
+    [" /unlock/ ", "unlock", "http://nfc-lappy.local:3001/unlock"],
+    [
+      " /system/lock screen/ ",
+      "system/lock screen",
+      "http://nfc-lappy.local:3001/system/lock%20screen",
+    ],
+  ])("normalizes and routes server command %s", (val, savedValue, endpoint) => {
+    const parsed = parseNfcConfig({
+      "AA:BB": {
+        name: "Desk",
+        actions: [
+          {
+            target: "server",
+            serverBaseUrl: " HTTP://NFC-LAPPY.local:3001/// ",
+            actionType: "command",
+            val,
+          },
+        ],
+      },
+    });
+    expect(parsed["AA:BB"].actions[0]).toMatchObject({
+      target: "server",
+      actionType: "command",
+      serverBaseUrl: "http://nfc-lappy.local:3001",
+      val: savedValue,
+    });
+    expect(serverActionUrl(parsed["AA:BB"].actions[0])).toBe(endpoint);
+  });
+
+  it("appends a command to the configured server base path", () => {
+    expect(
+      serverActionUrl({
+        target: "server",
+        serverBaseUrl: " https://host/launcher/// ",
+        actionType: "command",
+        val: " /unlock/ ",
+      }),
+    ).toBe("https://host/launcher/unlock");
+  });
+
+  it.each([
+    "",
+    " / ",
+    "https://other.example/unlock",
+    "https:unlock",
+    "unlock?force=true",
+    "unlock#fragment",
+    "power\\unlock",
+    ".",
+    "../unlock",
+    "power/./unlock",
+    "power/../unlock",
+    "power//unlock",
+    "%2e%2e/unlock",
+    "lock%20screen",
+    "un\nlock",
+  ])("rejects ambiguous command path %j before saving or executing", (val) => {
+    const action = {
+      target: "server" as const,
+      serverBaseUrl: "http://nfc-lappy.local:3001",
+      actionType: "command" as const,
+      val,
+    };
+    expect(() =>
+      parseNfcConfig({ "AA:BB": { name: "Desk", actions: [action] } }),
+    ).toThrow();
+    expect(() => serverActionUrl(action)).toThrow(/command/i);
+  });
+
+  it.each([undefined, "client"])(
+    "rejects a command without a server target (%s)",
+    (target) => {
+      expect(() =>
+        parseNfcConfig({
+          "AA:BB": {
+            name: "Desk",
+            actions: [{ actionType: "command", val: "unlock", target }],
+          },
+        }),
+      ).toThrow(/server/i);
+    },
+  );
+
   it("normalizes server mappings while retaining plain app and URL values", () => {
     const parsed = parseNfcConfig({
       "AA:BB": {

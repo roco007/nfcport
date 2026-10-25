@@ -79,6 +79,30 @@ describe("trigger HTTP requests", () => {
     expect(openURL).not.toHaveBeenCalled();
   });
 
+  it("executes a server command as a direct GET without launching a browser", async () => {
+    await executeNfcAction({
+      target: "server",
+      serverBaseUrl: `${baseUrl}/`,
+      actionType: "command",
+      val: " /unlock/ ",
+    });
+    expect(requests).toEqual([{ method: "GET", url: "/unlock" }]);
+    expect(openURL).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid command before any request or browser launch", async () => {
+    await expect(
+      executeNfcAction({
+        target: "server",
+        serverBaseUrl: baseUrl,
+        actionType: "command",
+        val: "../unlock",
+      }),
+    ).rejects.toThrow(/command/i);
+    expect(requests).toEqual([]);
+    expect(openURL).not.toHaveBeenCalled();
+  });
+
   it("opens a server app and URL using HTTP only with correctly encoded arguments", async () => {
     await executeNfcAction({
       target: "server",
@@ -137,6 +161,22 @@ describe("trigger HTTP requests", () => {
 });
 
 describe("action dispatch boundaries", () => {
+  it.each([undefined, "client"] as const)(
+    "rejects a command with target %s without launching a client application",
+    async (target) => {
+      let launched = "";
+      native.openApplication = (name) => {
+        launched = name;
+        return true;
+      };
+      await expect(
+        executeNfcAction({ actionType: "command", val: "unlock", target }),
+      ).rejects.toThrow(/server/i);
+      expect(launched).toBe("");
+      expect(openURL).not.toHaveBeenCalled();
+    },
+  );
+
   it("opens named client apps through native code", async () => {
     let launched = "";
     native.openApplication = (name) => {

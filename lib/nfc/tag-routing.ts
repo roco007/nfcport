@@ -1,4 +1,8 @@
-export type NfcActionType = "open_url" | "open_application" | "trigger";
+export type NfcActionType =
+  | "open_url"
+  | "open_application"
+  | "trigger"
+  | "command";
 export type NfcActionTarget = "client" | "server";
 export const DEFAULT_SERVER_BASE_URL = "http://nfc-lappy.local:3001";
 
@@ -70,6 +74,26 @@ function serverDestinationUrl(value: string): string {
   }
 }
 
+/** Keep command paths editable; encode their segments only when making a URL. */
+function normalizeCommandPath(value: string): string {
+  const path = value
+    .trim()
+    .replace(/^\/+|\/+$/g, "")
+    .trim();
+  if (
+    !path ||
+    /[\p{Cc}\\%?#:]/u.test(path) ||
+    path
+      .split("/")
+      .some((segment) => !segment.trim() || segment === "." || segment === "..")
+  ) {
+    throw new Error(
+      "Commands require a relative path such as unlock, without URLs, query parameters, fragments, encoded escapes, or dot segments.",
+    );
+  }
+  return path;
+}
+
 export function isServerAction(action: NfcAction): boolean {
   return action.target === "server";
 }
@@ -86,7 +110,16 @@ export function serverActionUrl(action: NfcAction): string {
   if (action.actionType === "open_application" && action.val.trim()) {
     return `${base}/open/${encodeURIComponent(action.val.trim())}`;
   }
-  throw new Error("Server actions must be Open App or Open URL with a value.");
+  if (action.actionType === "command") {
+    const path = normalizeCommandPath(action.val)
+      .split("/")
+      .map(encodeURIComponent)
+      .join("/");
+    return `${base}/${path}`;
+  }
+  throw new Error(
+    "Server actions must be Open App, Open URL, or Commands with a value.",
+  );
 }
 
 function parseActions(serial: string, input: unknown): NfcAction[] {
@@ -102,7 +135,8 @@ function parseActions(serial: string, input: unknown): NfcAction[] {
     if (
       (type !== "open_url" &&
         type !== "open_application" &&
-        type !== "trigger") ||
+        type !== "trigger" &&
+        type !== "command") ||
       typeof action.val !== "string" ||
       !action.val.trim()
     ) {
@@ -123,8 +157,13 @@ function parseActions(serial: string, input: unknown): NfcAction[] {
       throw new Error(`Invalid action target for ${serial}`);
     }
     const server = action.target === "server";
+    if (type === "command" && !server) {
+      throw new Error("Commands require a server target.");
+    }
     if (server && type === "trigger") {
-      throw new Error("Server actions must be Open App or Open URL.");
+      throw new Error(
+        "Server actions must be Open App, Open URL, or Commands.",
+      );
     }
     const serverBaseUrl = server
       ? normalizeServerBaseUrl(
@@ -137,11 +176,13 @@ function parseActions(serial: string, input: unknown): NfcAction[] {
       val:
         type === "trigger"
           ? triggerUrl(action.val)
-          : server
-            ? type === "open_url"
-              ? serverDestinationUrl(action.val)
-              : action.val.trim()
-            : action.val,
+          : type === "command"
+            ? normalizeCommandPath(action.val)
+            : server
+              ? type === "open_url"
+                ? serverDestinationUrl(action.val)
+                : action.val.trim()
+              : action.val,
       ...(server ? { target: "server" as const, serverBaseUrl } : {}),
       displayName:
         typeof action.displayName === "string" && action.displayName.trim()

@@ -13,6 +13,12 @@ import {
 } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { NfcActionEditor } from "@/components/nfc-action-editor";
+import { ServerMappingManager } from "@/components/server-mapping-manager";
+import { useServerMappings } from "@/hooks/use-server-mappings";
+import type {
+  ServerMapping,
+  ServerMappingInput,
+} from "@/lib/nfc/server-mappings";
 import {
   findTagForSerial,
   formatNfcSerial,
@@ -79,6 +85,12 @@ type MappingView = "cards" | "editor";
 
 const NFC_CONFIG_USER_NAME = "rc007";
 const NFC_CONFIG_ENDPOINT = `/api/nfc-config?userName=${encodeURIComponent(NFC_CONFIG_USER_NAME)}`;
+const ACTION_PRESENTATION = {
+  open_url: { icon: "globe-outline", label: "Open URL" },
+  open_application: { icon: "apps-outline", label: "Open application" },
+  command: { icon: "terminal-outline", label: "Command" },
+  trigger: { icon: "flash-outline", label: "Trigger URL" },
+} as const;
 
 const COLORS = {
   paper: "#F4F2EA",
@@ -175,6 +187,38 @@ export default function HomeScreen() {
   >("loading");
   const [mappingLoaded, setMappingLoaded] = useState(false);
   const [hostDraft, setHostDraft] = useState("");
+  const [serverCatalogHost, setServerCatalogHost] = useState<string | null>(
+    null,
+  );
+  const [adminApiKey, setAdminApiKey] = useState("");
+  const serverCatalog = useServerMappings(serverCatalogHost, adminApiKey);
+  const [serverManagerVisible, setServerManagerVisible] = useState(false);
+  const serverSelection = useRef<((server: ServerMapping) => void) | undefined>(
+    undefined,
+  );
+
+  const openServerManager = (onSelected?: (server: ServerMapping) => void) => {
+    serverSelection.current = onSelected;
+    serverCatalog.clearSaveError();
+    setServerManagerVisible(true);
+    void serverCatalog.refresh();
+  };
+
+  const closeServerManager = () => {
+    if (serverCatalog.saving) return;
+    serverSelection.current = undefined;
+    setServerManagerVisible(false);
+  };
+
+  const saveServerData = async (input: ServerMappingInput) => {
+    const server = await serverCatalog.save(input);
+    if (serverSelection.current) {
+      serverSelection.current(server);
+      serverSelection.current = undefined;
+      setServerManagerVisible(false);
+    }
+    return server;
+  };
   const [rememberedServerBaseUrl, setRememberedServerBaseUrl] = useState(
     DEFAULT_SERVER_BASE_URL,
   );
@@ -344,6 +388,7 @@ export default function HomeScreen() {
         if (!active) return;
 
         setHostDraft(host);
+        setServerCatalogHost(host);
         await refreshConfig(true);
         if (active) {
           refreshInterval = setInterval(() => {
@@ -364,6 +409,7 @@ export default function HomeScreen() {
   }, [refreshConfig]);
 
   const applyHost = async () => {
+    if (serverCatalog.saving) return;
     const nextHost = hostDraft.trim().replace(/\/+$/, "");
     if (mappingDirty.current && nextHost !== getConfiguredApiHost()) {
       setHostMessage(
@@ -379,6 +425,9 @@ export default function HomeScreen() {
       const previousHost = getConfiguredApiHost();
       await saveConfiguredApiHost(hostDraft);
       if (getConfiguredApiHost() !== previousHost) {
+        setAdminApiKey("");
+        setServerManagerVisible(false);
+        serverSelection.current = undefined;
         setClosedAppScanStatus("pending");
         setNfcConfig({});
         setMappingLoaded(false);
@@ -398,6 +447,8 @@ export default function HomeScreen() {
         setConfigStatus("loading");
       }
       setHostDraft(getConfiguredApiHost());
+      setServerCatalogHost(getConfiguredApiHost());
+      if (getConfiguredApiHost() === previousHost) void serverCatalog.refresh();
       setHostMessage("Host saved. Checking backend…");
       try {
         const response = await apiCall<unknown>(NFC_CONFIG_ENDPOINT, {
@@ -473,6 +524,9 @@ export default function HomeScreen() {
         {
           method: "POST",
           credentials: "omit",
+          headers: adminApiKey.trim()
+            ? { "X-API-Key": adminApiKey.trim() }
+            : {},
           body: JSON.stringify(parsed),
         },
       );
@@ -502,7 +556,7 @@ export default function HomeScreen() {
       setMappingMessage({
         kind: "error",
         text: /valid api key is required/i.test(message)
-          ? "This backend requires write authorization that the app has not configured. Your edits remain in this draft."
+          ? "Enter a valid Admin API key in Connection settings, then save again. Your edits remain in this draft."
           : message,
       });
     } finally {
@@ -1724,11 +1778,8 @@ export default function HomeScreen() {
                                   >
                                     <Ionicons
                                       name={
-                                        action.actionType === "open_url"
-                                          ? "globe-outline"
-                                          : action.actionType === "trigger"
-                                            ? "flash-outline"
-                                            : "apps-outline"
+                                        ACTION_PRESENTATION[action.actionType]
+                                          .icon
                                       }
                                       size={14}
                                       color={COLORS.inkSoft}
@@ -1828,12 +1879,9 @@ export default function HomeScreen() {
                                         <View style={styles.actionIcon}>
                                           <Ionicons
                                             name={
-                                              action.actionType === "open_url"
-                                                ? "globe-outline"
-                                                : action.actionType ===
-                                                    "trigger"
-                                                  ? "flash-outline"
-                                                  : "apps-outline"
+                                              ACTION_PRESENTATION[
+                                                action.actionType
+                                              ].icon
                                             }
                                             size={17}
                                             color={COLORS.inkSoft}
@@ -1905,6 +1953,15 @@ export default function HomeScreen() {
                                         onRememberServerBaseUrl={
                                           rememberServerBaseUrl
                                         }
+                                        serverMappings={serverCatalog.servers}
+                                        serverMappingsLoading={
+                                          serverCatalog.loading
+                                        }
+                                        serverMappingsError={
+                                          serverCatalog.error
+                                        }
+                                        onRefreshServers={serverCatalog.refresh}
+                                        onManageServers={openServerManager}
                                         onChange={(patch) =>
                                           updateMappingDraft((current) =>
                                             current.map((item) =>
@@ -2356,11 +2413,8 @@ export default function HomeScreen() {
                                     >
                                       <Ionicons
                                         name={
-                                          action.actionType === "open_url"
-                                            ? "globe-outline"
-                                            : action.actionType === "trigger"
-                                              ? "flash-outline"
-                                              : "apps-outline"
+                                          ACTION_PRESENTATION[action.actionType]
+                                            .icon
                                         }
                                         size={14}
                                         color={COLORS.inkSoft}
@@ -2404,11 +2458,8 @@ export default function HomeScreen() {
                                   {tag.actions.map((action, actionIndex) => {
                                     const actionLabel =
                                       action.displayName ??
-                                      (action.actionType === "open_url"
-                                        ? "Open URL"
-                                        : action.actionType === "trigger"
-                                          ? "Trigger URL"
-                                          : "Open application");
+                                      ACTION_PRESENTATION[action.actionType]
+                                        .label;
                                     const routeKey = JSON.stringify([
                                       tag.normalizedSerial,
                                       actionIndex,
@@ -2448,12 +2499,9 @@ export default function HomeScreen() {
                                         <View style={styles.actionIcon}>
                                           <Ionicons
                                             name={
-                                              action.actionType === "open_url"
-                                                ? "globe-outline"
-                                                : action.actionType ===
-                                                    "trigger"
-                                                  ? "flash-outline"
-                                                  : "apps-outline"
+                                              ACTION_PRESENTATION[
+                                                action.actionType
+                                              ].icon
                                             }
                                             size={17}
                                             color={COLORS.inkSoft}
@@ -2561,6 +2609,33 @@ export default function HomeScreen() {
         <View style={styles.connectionCard}>
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="Add/Update Server Data"
+            disabled={hostSaving}
+            onPress={() => openServerManager()}
+            style={styles.connectionHeader}
+          >
+            <View style={styles.connectionIcon}>
+              <Ionicons
+                name="desktop-outline"
+                size={19}
+                color={COLORS.inkSoft}
+              />
+            </View>
+            <View style={styles.connectionSummary}>
+              <Text style={styles.connectionTitle}>Add/Update Server Data</Text>
+              <Text style={styles.connectionHost}>
+                {serverCatalog.loading
+                  ? "Loading saved servers…"
+                  : `${serverCatalog.servers.length} saved server${serverCatalog.servers.length === 1 ? "" : "s"} · Names and IP addresses`}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.muted} />
+          </Pressable>
+        </View>
+
+        <View style={styles.connectionCard}>
+          <Pressable
+            accessibilityRole="button"
             accessibilityLabel={`${connectionExpanded ? "Hide" : "Show"} backend connection settings`}
             accessibilityState={{ expanded: connectionExpanded }}
             onPress={() => setConnectionExpanded((current) => !current)}
@@ -2625,13 +2700,28 @@ export default function HomeScreen() {
                 value={hostDraft}
                 style={styles.hostInput}
               />
+              <Text style={styles.connectionLabel}>ADMIN API KEY</Text>
+              <Text style={styles.connectionHint}>
+                Required to save tag actions and server data. Kept only for this
+                session; cleared when you change backend hosts.
+              </Text>
+              <TextInput
+                accessibilityLabel="Backend Admin API key"
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+                editable={!mappingSaving && !serverCatalog.saving}
+                onChangeText={setAdminApiKey}
+                value={adminApiKey}
+                style={styles.hostInput}
+              />
               <Pressable
                 accessibilityRole="button"
                 accessibilityState={{
                   busy: hostSaving,
-                  disabled: hostSaving || mappingSaving,
+                  disabled: hostSaving || mappingSaving || serverCatalog.saving,
                 }}
-                disabled={hostSaving || mappingSaving}
+                disabled={hostSaving || mappingSaving || serverCatalog.saving}
                 onPress={applyHost}
                 style={({ pressed }) => [
                   styles.connectionButton,
@@ -2677,6 +2767,19 @@ export default function HomeScreen() {
           </Text>
         </View>
       </ScrollView>
+      <ServerMappingManager
+        visible={serverManagerVisible}
+        onClose={closeServerManager}
+        servers={serverCatalog.servers}
+        loading={serverCatalog.loading}
+        error={serverCatalog.error}
+        saving={serverCatalog.saving}
+        saveError={serverCatalog.saveError}
+        onRefresh={serverCatalog.refresh}
+        onSave={saveServerData}
+        apiKey={adminApiKey}
+        onApiKeyChange={setAdminApiKey}
+      />
     </ScreenContainer>
   );
 }

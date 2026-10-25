@@ -57,6 +57,13 @@ describe("native action cache", () => {
             actionType: "open_url",
             val: "https://example.com/?a=1&b=2",
           },
+          {
+            target: "server",
+            serverBaseUrl: "http://nfc-lappy.local:3001/",
+            actionType: "command",
+            val: " /unlock/ ",
+            displayName: "Unlock laptop",
+          },
           { actionType: "open_application", val: "WhatsApp" },
           { actionType: "trigger", val: "http://laptop.local:3001/custom" },
         ],
@@ -78,6 +85,11 @@ describe("native action cache", () => {
           {
             actionType: "trigger",
             val: "http://laptop.local:3001/open-url?url=https%3A%2F%2Fexample.com%2F%3Fa%3D1%26b%3D2",
+          },
+          {
+            actionType: "trigger",
+            val: "http://nfc-lappy.local:3001/unlock",
+            displayName: "Unlock laptop",
           },
           { actionType: "open_application", val: "WhatsApp" },
           { actionType: "trigger", val: "http://laptop.local:3001/custom" },

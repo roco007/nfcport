@@ -2,6 +2,7 @@ import { Platform } from "react-native";
 import { getApiBaseUrl } from "@/constants/oauth";
 import * as Auth from "./auth";
 import { getConfiguredApiHost } from "@/lib/api-host";
+import { ApiError } from "./api-error";
 
 function extractApiErrorMessage(payload: unknown, fallback: string): string {
   if (!payload || typeof payload !== "object") return fallback;
@@ -75,8 +76,9 @@ export async function apiCall<T>(
       } catch {
         // Not JSON, use text as is
       }
-      throw new Error(
+      throw new ApiError(
         errorMessage || `API call failed: ${response.statusText}`,
+        response.status,
       );
     }
 
