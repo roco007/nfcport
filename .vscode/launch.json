@@ -1,0 +1,26 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Dev: LAN web and API",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm dev:lan",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Dev: LAN MySQL backend",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm dev:backend",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "EAS: Android preview-verified build",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm exec eas build --platform android --profile preview-verified --non-interactive --wait",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

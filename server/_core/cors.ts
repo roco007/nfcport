@@ -6,12 +6,15 @@ LOOPBACK_IPS.addSubnet("127.0.0.0", 8, "ipv4");
 LOOPBACK_IPS.addAddress("::1", "ipv6");
 LOOPBACK_IPS.addSubnet("::ffff:127.0.0.0", 104, "ipv6");
 
-function configuredOrigin(name: "EXPO_PACKAGER_PROXY_URL" | "EXPO_WEB_PREVIEW_URL"): string | null {
+function configuredOrigin(
+  name: "EXPO_PACKAGER_PROXY_URL" | "EXPO_WEB_PREVIEW_URL",
+): string | null {
   const value = process.env[name];
   if (!value) return null;
   try {
     const url = new URL(value);
-    return (url.protocol === "https:" || url.protocol === "http:") && url.origin === value
+    return (url.protocol === "https:" || url.protocol === "http:") &&
+      url.origin === value
       ? value
       : null;
   } catch {
@@ -34,7 +37,8 @@ export function trustedExpoWebOrigins(): Set<string> {
   // Loopback origins are request-local below. Never put one in this process-wide set: the
   // same starter can also be reached through a remote API host.
   for (const configured of [packager, preview]) {
-    if (configured && !originHasLoopbackHostname(configured)) origins.add(configured);
+    if (configured && !originHasLoopbackHostname(configured))
+      origins.add(configured);
   }
   // Backward-compatible production fallback while every runtime starts injecting the explicit
   // 8328 origin. Localhost cannot use hostname prefix derivation and is handled only by exact env.
@@ -67,13 +71,47 @@ function originHasLoopbackHostname(origin: string): boolean {
   }
 }
 
+function isPrivateLanIpv4(hostname: string): boolean {
+  if (isIP(hostname) !== 4) return false;
+  const [first, second] = hostname.split(".").map(Number);
+  return (
+    first === 10 ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
+  );
+}
+
+function isSameLanWebOrigin(origin: string, apiHostname: string): boolean {
+  if (
+    process.env.NODE_ENV !== "development" ||
+    !isPrivateLanIpv4(apiHostname)
+  ) {
+    return false;
+  }
+  try {
+    const url = new URL(origin);
+    return (
+      url.origin === origin &&
+      url.protocol === "http:" &&
+      url.port === "8081" &&
+      url.hostname === apiHostname
+    );
+  } catch {
+    return false;
+  }
+}
+
 function configuredLocalExpoWebOrigins(): Set<string> {
   const origins = new Set<string>();
-  for (const name of ["EXPO_PACKAGER_PROXY_URL", "EXPO_WEB_PREVIEW_URL"] as const) {
+  for (const name of [
+    "EXPO_PACKAGER_PROXY_URL",
+    "EXPO_WEB_PREVIEW_URL",
+  ] as const) {
     const origin = configuredOrigin(name);
     if (!origin) continue;
     const url = new URL(origin);
-    if (url.protocol === "http:" && isLoopbackApiHost(url.hostname)) origins.add(origin);
+    if (url.protocol === "http:" && isLoopbackApiHost(url.hostname))
+      origins.add(origin);
   }
   return origins;
 }
@@ -93,10 +131,16 @@ export function createCorsMiddleware(
     }
     const loopbackOrigin = originHasLoopbackHostname(origin);
     const allowedLocalOrigin =
-      localApiRequest(req.hostname) && configuredLocalExpoWebOrigins().has(origin);
+      localApiRequest(req.hostname) &&
+      configuredLocalExpoWebOrigins().has(origin);
     const allowedConfiguredOrigin =
       !loopbackOrigin && allowedOrigins.has(origin);
-    if (!allowedConfiguredOrigin && !allowedLocalOrigin) {
+    const allowedSameLanOrigin = isSameLanWebOrigin(origin, req.hostname);
+    if (
+      !allowedConfiguredOrigin &&
+      !allowedLocalOrigin &&
+      !allowedSameLanOrigin
+    ) {
       res.status(403).json({ error: "origin_not_allowed" });
       return;
     }

@@ -3,8 +3,32 @@ services:
     name: nfcport-backend
     runtime: node
     rootDir: backend
-    buildCommand: npm install
-    startCommand: node index.js
+    buildCommand: npm ci && npm run build && npm prune --omit=dev
+    preDeployCommand: npm run migrate
+    startCommand: npm start
+    healthCheckPath: /ready
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: 24.22.1
+      - key: LOG_LEVEL
+        value: info
+      - key: TRUST_PROXY_HOPS
+        value: 1
+      - key: MYSQL_SSL_MODE
+        value: required
+      - key: MYSQL_DATABASE
+        value: nfcPort
+      - key: ADMIN_API_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false
+      - key: MYSQL_HOST
+        sync: false
+      - key: MYSQL_PORT
+        sync: false
+      - key: MYSQL_USER
+        sync: false
+      - key: MYSQL_PASSWORD
+        sync: false

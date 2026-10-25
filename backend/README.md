@@ -1,36 +1,173 @@
-# NFC Port standalone backend
+# NFC Port backend
 
-This folder contains the standalone backend service, which fetches NFC mappings from MySQL.
+A production-oriented TypeScript/Express service that reads and updates per-user NFC action mappings in MySQL. It preserves the mobile app's existing `GET /api/nfc-config` contract while adding strict environment and query schemas, authenticated writes, secure defaults, structured logs, probes, graceful shutdown, and deterministic builds.
 
-## Deploy on Render
+## Architecture
 
-The repository-root `render.yaml` explicitly configures this folder as a Node web service and starts `node index.js`. If configuring a Render Web Service manually, set **Root Directory** to `backend`, **Build Command** to `npm install`, and **Start Command** to `node index.js` (or `npm start`). Do not use `node expo-router/entry`; that is the mobile app's Expo entry point, not this service.
+```text
+backend/
+├── src/
+│   ├── config/          # Zod-validated environment configuration
+│   ├── controllers/     # HTTP request/response orchestration
+│   ├── db/              # MySQL pool construction and TLS
+│   ├── errors/          # Safe application error hierarchy
+│   ├── middleware/      # Auth, validation, limits, and error responses
+│   ├── observability/   # Pino JSON logging and request IDs
+│   ├── repositories/    # Parameterized MySQL queries
+│   ├── routes/          # Health and NFC route composition
+│   ├── schemas/         # Runtime query schemas
+│   ├── scripts/         # Checksum-verified migration runner
+│   ├── services/        # Business logic
+│   ├── app.ts           # Dependency-injected Express application
+│   └── server.ts        # Bootstrap, timeouts, and graceful shutdown
+├── migrations/          # Table-only MySQL migration
+├── tests/               # Unit and HTTP integration tests
+├── .env.example
+└── Dockerfile           # Multi-stage, non-root image
+```
 
-## Run
+The service is stateless. MySQL writes use a single `INSERT ... ON DUPLICATE KEY UPDATE`, removing the read-before-write race in the old implementation. The `user` column must remain a primary or unique key.
 
-From the repository root:
+## Requirements
+
+- Node.js 24.22.1+
+- MySQL 8+ (or a compatible MySQL service with a JSON column)
+- npm (bundled with Node.js)
+
+## Local setup
+
+1. Enter the service and install the locked dependencies:
+
+   ```bash
+   cd backend
+   npm ci
+   ```
+
+2. On a fresh checkout, copy `.env.example` to `.env`. Do not overwrite an existing `.env` because it may contain real credentials.
+
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Generate a write API key and place it in `ADMIN_API_KEY`:
+
+   ```bash
+   openssl rand -base64 48
+   ```
+
+4. Set the `MYSQL_*` values and exact browser origins in `CORS_ORIGINS`. Local MySQL may use `MYSQL_SSL_MODE=disabled`; production refuses to start unless it is `required`. Production also requires a DNS database hostname so mysql2 can verify the certificate identity.
+
+5. Build, then run the checksum-verified migration against the database named by `MYSQL_DATABASE`:
+
+   ```bash
+   npm run build
+   npm run migrate
+   ```
+
+   The migration runner takes a MySQL advisory lock, validates legacy user identifiers before changing their type, and enforces the unique key required by atomic upserts. It stops without lossy conversion if legacy identifiers or duplicates need manual cleanup.
+
+6. Start the watch-mode server:
+
+   ```bash
+   npm run dev
+   ```
+
+The default address is `http://localhost:3002`. From the repository root, `pnpm dev:backend` runs the same watch-mode service.
+
+The example configuration sets `HOST=0.0.0.0`, so the service also listens on the Mac's LAN interface. From another device on the same network, check `http://<Mac-LAN-IP>:3002/health` after starting the backend (for example, `http://192.168.0.105:3002/health`). If Expo web is opened at `http://<Mac-LAN-IP>:8081`, add that exact origin to `CORS_ORIGINS` in your local `.env`. Replace the example IP when the Mac's address changes. CORS does not grant write access; POST still requires `X-API-Key`.
+
+## Verify, build, and run
 
 ```bash
-cd backend
+npm run typecheck
+npm test
+npm run build
 npm start
 ```
 
-Or from the repository root with Node installed:
+`npm start` and `npm run migrate` run compiled code from `dist/`, so run `npm run build` first outside Docker. Startup fails immediately if required configuration is missing, production TLS/CORS policy is unsafe, MySQL cannot be reached, or the required table/columns are missing. Database reads and writes have driver-level deadlines, the pool queue is bounded, and shutdown has a hard deadline.
 
-```bash
-node backend/index.js
+The committed `.env.example` explicitly sets local MySQL port `3306`. If `MYSQL_PORT` is omitted, the service retains the legacy deployment default `18082`; set it explicitly in every production environment. `DATABASE_QUERY_TIMEOUT_MS` bounds each read/write query independently of HTTP body-receive timeouts.
+
+## HTTP API
+
+All JSON errors use this stable shape and never include stack traces:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Request validation failed",
+    "requestId": "...",
+    "details": []
+  }
+}
 ```
 
-The server listens on `0.0.0.0:3002` by default. Change the port with `PORT=3000 npm start`; set `HOST=127.0.0.1` to restrict it to loopback. For a phone on the same network, use the computer's LAN IP and port `3002` in the app's Host URL setting.
+| Method     | Path                             | Purpose                                | Authentication |
+| ---------- | -------------------------------- | -------------------------------------- | -------------- |
+| `GET`      | `/health`                        | Process liveness; does not touch MySQL | None           |
+| `GET`      | `/ready`                         | MySQL readiness with a timeout         | None           |
+| `GET`      | `/api/health`                    | Backward-compatible liveness alias     | None           |
+| `GET`      | `/api/nfc-config?userName=rc007` | Stored JSON payload                    | See below      |
+| `POST`     | `/api/nfc-config?userName=rc007` | Replace an opaque JSON payload         | `X-API-Key`    |
+| `GET/POST` | `/api/v1/nfc-config`             | Versioned alias                        | Same as above  |
 
-## Endpoints
+If `userName` is omitted or empty, `DEFAULT_USER_NAME` (default `rc007`) is used. That one client-facing mapping is intentionally readable without credentials. Reading any other user's mapping requires `X-API-Key`; every write requires it. This prevents a caller-controlled `userName` from becoming object-level authorization.
 
-- `GET /api/health`
-- `GET /api/nfc-config?userName=rc007` — returns the `nfcTagMapping` JSON for the given user. If `userName` is omitted or empty, it defaults to `rc007`.
-- `POST /api/nfc-config?userName=rc007` — inserts or replaces that user's `nfcTagMapping` with the JSON object in the request body. If `userName` is omitted or empty, it defaults to `rc007`. The request body is limited to 1 MiB.
+User names and query keys remain strictly validated. POST bodies are accepted and stored as opaque JSON objects or arrays without application-specific shape validation or normalization. Requests must still use a supported JSON content type, contain syntactically valid JSON, remain within the configured body-size limit, and pass write authentication and rate limiting. Callers are responsible for sending a payload their consumers can understand.
 
-The POST endpoint does not require authentication. Anyone who can reach the service can overwrite mappings for any `userName`; do not expose it publicly unless that is intentional.
+Removing domain validation also removes the backend's URL and application-URI allowlist. An authenticated writer can store arbitrary action values, so downstream consumers must treat the payload as untrusted and enforce any schemes or actions they are willing to execute.
 
-The backend loads `backend/.env` on startup; variables already set by the hosting environment take precedence. Configure `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, and `MYSQL_PASSWORD` in that file or in the hosting environment. For the configured Aiven service, use port `18082`; it is also the backend default. `MYSQL_DATABASE` is optional and defaults to `nfcPort`. This backend does not enable TLS; the database service must allow non-TLS connections. Keep `.env` private and do not commit it.
+Read a mapping:
 
-For example, call `curl --get --data-urlencode 'userName=rc007' http://localhost:3002/api/nfc-config` to read a mapping. To save one, send a JSON object with `curl --location --request POST 'http://localhost:3002/api/nfc-config?userName=rc007' --header 'Content-Type: application/json' --data @mapping.json`.
+```bash
+curl --get --data-urlencode 'userName=rc007' http://localhost:3002/api/nfc-config
+```
+
+Write a mapping:
+
+```bash
+curl --request POST 'http://localhost:3002/api/nfc-config?userName=rc007' \
+  --header 'Content-Type: application/json' \
+  --header "X-API-Key: $ADMIN_API_KEY" \
+  --data @nfc-config.json
+```
+
+## Container
+
+Build from this directory:
+
+```bash
+docker build --tag nfcport-backend:2.0.0 .
+```
+
+Apply migrations with the same immutable image, then run the service:
+
+```bash
+docker run --rm --env-file .env.production \
+  nfcport-backend:2.0.0 npm run migrate
+
+docker run --rm --name nfcport-backend \
+  --publish 3002:3002 \
+  --env-file .env.production \
+  nfcport-backend:2.0.0
+```
+
+The final image contains only production dependencies and compiled output, runs as the unprivileged `node` user, and has an OCI health check against `/health`. When MySQL is running on the Docker host, use a host-reachable database name such as `host.docker.internal` instead of `127.0.0.1`.
+
+## Production notes
+
+- Put TLS termination at the load balancer and keep verified TLS enabled from the service to MySQL.
+- Set `TRUST_PROXY_HOPS` to the exact number of trusted reverse proxies. Render uses `1` in `render.yaml`; use `0` for a directly exposed process.
+- Browser CORS is an exact allowlist. Native/server callers without an `Origin` header are allowed.
+- `X-API-Key` is intended for a trusted administrative client and must never be bundled in the Expo application. The current app can read the default mapping, but its end-user mapping editor must use identity-bound JWT authorization before it can write safely; otherwise the protected POST correctly returns `401`.
+- The bundled rate limiter is per process. For multiple replicas, enforce a shared limit at the gateway or configure a Redis-backed `express-rate-limit` store.
+- Pino emits one JSON object per log line and redacts API keys, authorization/cookie headers, and database credentials.
+- Rotate `ADMIN_API_KEY` and database credentials through the hosting platform; never bake `.env` into an image.
+
+The root `render.yaml` installs, builds, prunes development dependencies, runs `npm run migrate` as a pre-deploy command, starts `dist/server.js`, and uses the dependency-aware `/ready` endpoint for platform probes. Secret values are declared with `sync: false` or generated by Render. Render pre-deploy commands require a supported paid service plan.
+
+## CI foundation
+
+`.github/workflows/backend-ci.yml` runs the locked install, strict typecheck, test suite, production build, and Docker image build whenever backend files change. The test application uses dependency injection and an in-memory repository; repository tests separately assert that real mysql2 calls receive query deadlines. Add a disposable MySQL service in CI when you want migration/TLS integration coverage.

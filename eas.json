@@ -9,6 +9,12 @@
       "android": {
         "buildType": "apk"
       }
+    },
+    "preview-verified": {
+      "extends": "preview",
+      "android": {
+        "gradleCommand": ":nfc-background:testDebugUnitTest :app:assembleRelease"
+      }
     }
   }
 }

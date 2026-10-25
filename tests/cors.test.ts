@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import express, { type Request } from "express";
-import type { Server } from "node:http";
+import { request as httpRequest, type Server } from "node:http";
 import {
   createCorsMiddleware,
   isLoopbackApiHost,
@@ -13,10 +13,7 @@ import {
   getSessionCookieName,
   getSessionCookieOptions,
 } from "../server/_core/cookies";
-import {
-  LEGACY_COOKIE_NAME,
-  SESSION_COOKIE_SUFFIX,
-} from "../shared/const";
+import { LEGACY_COOKIE_NAME, SESSION_COOKIE_SUFFIX } from "../shared/const";
 
 let server: Server | null = null;
 
@@ -44,19 +41,46 @@ async function testServer(
   ]),
 ): Promise<string> {
   const app = express();
-  app.use(
-    createCorsMiddleware(
-      allowedOrigins,
-      () => localApi,
-    ),
-  );
+  app.use(createCorsMiddleware(allowedOrigins, () => localApi));
   app.get("/read", (_req, res) => res.json({ ok: true }));
   app.post("/write", (_req, res) => res.json({ ok: true }));
   server = app.listen(0);
   await new Promise<void>((resolve) => server?.once("listening", resolve));
   const address = server.address();
-  if (!address || typeof address === "string") throw new Error("missing test port");
+  if (!address || typeof address === "string")
+    throw new Error("missing test port");
   return `http://127.0.0.1:${address.port}`;
+}
+
+async function getWithHost(
+  base: string,
+  host: string,
+  origin: string,
+): Promise<{ status: number; allowedOrigin: string | undefined }> {
+  const url = new URL(`${base}/read`);
+  return await new Promise((resolve, reject) => {
+    const request = httpRequest(
+      {
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname,
+        headers: { Host: host, Origin: origin },
+      },
+      (response) => {
+        response.resume();
+        response.on("end", () =>
+          resolve({
+            status: response.statusCode ?? 0,
+            allowedOrigin: response.headers["access-control-allow-origin"] as
+              | string
+              | undefined,
+          }),
+        );
+      },
+    );
+    request.on("error", reject);
+    request.end();
+  });
 }
 
 describe("Mobile API origin and cookie isolation", () => {
@@ -80,10 +104,13 @@ describe("Mobile API origin and cookie isolation", () => {
     "rejects credentialed %s from an unpaired web origin",
     async (method) => {
       const base = await testServer();
-      const response = await fetch(`${base}/${method === "GET" ? "read" : "write"}`, {
-        method,
-        headers: { Origin: "https://evil.example.test" },
-      });
+      const response = await fetch(
+        `${base}/${method === "GET" ? "read" : "write"}`,
+        {
+          method,
+          headers: { Origin: "https://evil.example.test" },
+        },
+      );
 
       expect(response.status).toBe(403);
       expect(response.headers.get("access-control-allow-origin")).toBeNull();
@@ -96,7 +123,9 @@ describe("Mobile API origin and cookie isolation", () => {
     "https://evil.example.test",
   ])("rejects an unpaired preview origin: %s", async (origin) => {
     const base = await testServer();
-    const response = await fetch(`${base}/read`, { headers: { Origin: origin } });
+    const response = await fetch(`${base}/read`, {
+      headers: { Origin: origin },
+    });
     expect(response.status).toBe(403);
   });
 
@@ -119,7 +148,9 @@ describe("Mobile API origin and cookie isolation", () => {
     vi.stubEnv("EXPO_WEB_PREVIEW_URL", "http://127.0.0.1:48328");
     const base = await testServer();
     for (const origin of ["http://localhost:48081", "http://127.0.0.1:48328"]) {
-      const local = await fetch(`${base}/read`, { headers: { Origin: origin } });
+      const local = await fetch(`${base}/read`, {
+        headers: { Origin: origin },
+      });
       expect(local.status).toBe(200);
       expect(local.headers.get("access-control-allow-origin")).toBe(origin);
     }
@@ -135,12 +166,31 @@ describe("Mobile API origin and cookie isolation", () => {
     expect(isLoopbackApiHost("3000-sandbox.preview.example.test")).toBe(false);
   });
 
+  it("allows the same private LAN web origin only while developing", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const base = await testServer();
+    const origin = "http://192.168.0.105:8081";
+
+    const allowed = await getWithHost(base, "192.168.0.105:3000", origin);
+    expect(allowed.status).toBe(200);
+    expect(allowed.allowedOrigin).toBe(origin);
+
+    const differentHost = await getWithHost(base, "192.168.0.106:3000", origin);
+    expect(differentHost.status).toBe(403);
+
+    vi.stubEnv("NODE_ENV", "production");
+    const production = await getWithHost(base, "192.168.0.105:3000", origin);
+    expect(production.status).toBe(403);
+  });
+
   it("rejects localhost for a remote API even in development mode", async () => {
     vi.stubEnv("EXPO_PACKAGER_PROXY_URL", "http://localhost:48081");
     vi.stubEnv("EXPO_WEB_PREVIEW_URL", "http://127.0.0.1:48328");
     const base = await testServer(false);
     for (const origin of ["http://localhost:48081", "http://127.0.0.1:48328"]) {
-      const remote = await fetch(`${base}/read`, { headers: { Origin: origin } });
+      const remote = await fetch(`${base}/read`, {
+        headers: { Origin: origin },
+      });
       expect(remote.status).toBe(403);
     }
   });
@@ -155,24 +205,25 @@ describe("Mobile API origin and cookie isolation", () => {
     "https://localhost:8081",
     "http://127.0.0.42:9090",
     "https://[::ffff:127.0.0.1]:8081",
-  ])("never promotes a loopback-equivalent origin into a remote API allowlist: %s", async (origin) => {
-    const previousPackager = process.env.EXPO_PACKAGER_PROXY_URL;
-    try {
-      process.env.EXPO_PACKAGER_PROXY_URL = origin;
-      expect([...trustedExpoWebOrigins()]).toEqual([]);
-      const base = await testServer(
-        false,
-        new Set([origin]),
-      );
-      const remote = await fetch(`${base}/read`, {
-        headers: { Origin: origin },
-      });
-      expect(remote.status).toBe(403);
-    } finally {
-      if (previousPackager === undefined) delete process.env.EXPO_PACKAGER_PROXY_URL;
-      else process.env.EXPO_PACKAGER_PROXY_URL = previousPackager;
-    }
-  });
+  ])(
+    "never promotes a loopback-equivalent origin into a remote API allowlist: %s",
+    async (origin) => {
+      const previousPackager = process.env.EXPO_PACKAGER_PROXY_URL;
+      try {
+        process.env.EXPO_PACKAGER_PROXY_URL = origin;
+        expect([...trustedExpoWebOrigins()]).toEqual([]);
+        const base = await testServer(false, new Set([origin]));
+        const remote = await fetch(`${base}/read`, {
+          headers: { Origin: origin },
+        });
+        expect(remote.status).toBe(403);
+      } finally {
+        if (previousPackager === undefined)
+          delete process.env.EXPO_PACKAGER_PROXY_URL;
+        else process.env.EXPO_PACKAGER_PROXY_URL = previousPackager;
+      }
+    },
+  );
 
   it("keeps native no-Origin requests separate", async () => {
     const base = await testServer();
@@ -248,7 +299,8 @@ describe("Mobile API origin and cookie isolation", () => {
         () => {},
       );
     } finally {
-      if (previousPackager === undefined) delete process.env.EXPO_PACKAGER_PROXY_URL;
+      if (previousPackager === undefined)
+        delete process.env.EXPO_PACKAGER_PROXY_URL;
       else process.env.EXPO_PACKAGER_PROXY_URL = previousPackager;
     }
     expect(cleared).toEqual([
@@ -273,7 +325,8 @@ describe("Mobile API origin and cookie isolation", () => {
       hostname: "api.customer.example",
     } as Request);
     expect(options.domain).toBeUndefined();
-    if (previousPackager === undefined) delete process.env.EXPO_PACKAGER_PROXY_URL;
+    if (previousPackager === undefined)
+      delete process.env.EXPO_PACKAGER_PROXY_URL;
     else process.env.EXPO_PACKAGER_PROXY_URL = previousPackager;
   });
 });

@@ -5,6 +5,7 @@ const NFC_ACTIONS = {
   tech: "android.nfc.action.TECH_DISCOVERED",
   tag: "android.nfc.action.TAG_DISCOVERED",
 };
+const DISPATCH_ACTIVITY = "expo.modules.nfcbackground.NfcDispatchActivity";
 
 function hasAction(intentFilter, actionName) {
   return intentFilter.action?.some(
@@ -14,7 +15,6 @@ function hasAction(intentFilter, actionName) {
 
 function makeFilter(actionName, includeMimeType) {
   const filter = {
-    $: { "data-nfc-background": "true" },
     action: [{ $: { "android:name": actionName } }],
     category: [{ $: { "android:name": "android.intent.category.DEFAULT" } }],
   };
@@ -34,9 +34,37 @@ module.exports = function withNfcIntentFilters(config) {
       activity.$?.["android:name"]?.endsWith("MainActivity"),
     );
 
-    if (!mainActivity) return configWithManifest;
+    if (!application || !mainActivity) {
+      throw new Error("NFC routing requires an Android MainActivity.");
+    }
 
-    const intentFilters = mainActivity["intent-filter"] ?? [];
+    // Migrate existing prebuilds as well as clean builds. Launcher/deep-link
+    // intents still open React; system NFC intents must never do so.
+    mainActivity["intent-filter"] = (mainActivity["intent-filter"] ?? [])
+      .map((filter) => ({
+        ...filter,
+        action: (filter.action ?? []).filter(
+          (action) =>
+            !Object.values(NFC_ACTIONS).includes(action.$?.["android:name"]),
+        ),
+      }))
+      .filter((filter) => filter.action.length > 0);
+    if (mainActivity["meta-data"]) {
+      mainActivity["meta-data"] = mainActivity["meta-data"].filter(
+        (entry) => entry.$?.["android:name"] !== NFC_ACTIONS.tech,
+      );
+    }
+
+    let dispatcher = activities.find(
+      (activity) => activity.$?.["android:name"] === DISPATCH_ACTIVITY,
+    );
+    if (!dispatcher) {
+      // Theme, task isolation and lifecycle attributes are supplied by the
+      // local module's library manifest during Android manifest merging.
+      dispatcher = { $: { "android:name": DISPATCH_ACTIVITY } };
+      activities.push(dispatcher);
+    }
+    const intentFilters = dispatcher["intent-filter"] ?? [];
     const requiredFilters = [
       [NFC_ACTIONS.ndef, true],
       [NFC_ACTIONS.tech, false],
@@ -49,7 +77,17 @@ module.exports = function withNfcIntentFilters(config) {
       }
     }
 
-    mainActivity["intent-filter"] = intentFilters;
+    dispatcher["intent-filter"] = intentFilters;
+    const metadata = (dispatcher["meta-data"] ?? []).filter(
+      (entry) => entry.$?.["android:name"] !== NFC_ACTIONS.tech,
+    );
+    metadata.push({
+      $: {
+        "android:name": NFC_ACTIONS.tech,
+        "android:resource": "@xml/nfc_tech_filter",
+      },
+    });
+    dispatcher["meta-data"] = metadata;
     return configWithManifest;
   });
 };

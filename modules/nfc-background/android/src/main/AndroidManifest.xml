@@ -1,0 +1,31 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.NFC" />
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+
+  <!-- Android 11+ exposes launchable apps for exact name matching, without QUERY_ALL_PACKAGES. -->
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.MAIN" />
+      <category android:name="android.intent.category.LAUNCHER" />
+    </intent>
+  </queries>
+
+  <application>
+    <service
+      android:name="expo.modules.nfcbackground.NfcTriggerService"
+      android:foregroundServiceType="connectedDevice"
+      android:exported="false" />
+    <!-- NFC filters and TECH_DISCOVERED metadata are added by withNfcIntentFilters. -->
+    <activity
+      android:name="expo.modules.nfcbackground.NfcDispatchActivity"
+      android:exported="true"
+      android:permission="android.permission.NFC"
+      android:taskAffinity="${applicationId}.nfcdispatch"
+      android:excludeFromRecents="true"
+      android:noHistory="true"
+      android:finishOnTaskLaunch="true"
+      android:theme="@style/NfcBackgroundDispatchTheme" />
+  </application>
+</manifest>

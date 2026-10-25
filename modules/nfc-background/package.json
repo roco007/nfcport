@@ -1,0 +1,6 @@
+{
+  "name": "nfc-background",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Native Android NFC routing without opening the launcher screen"
+}

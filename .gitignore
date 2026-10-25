@@ -34,7 +34,8 @@ yarn-error.*
 
 # local env files
 .env*.local
-/backend/.env
+/backend/.env*
+!/backend/.env.example
 
 # typescript
 *.tsbuildinfo
@@ -46,7 +47,8 @@ app-example
 /android
 
 # IDE
-.vscode/
+.vscode/*
+!.vscode/launch.json
 .idea/
 *.swp
 *.swo
@@ -66,3 +68,6 @@ Thumbs.db
 
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
+
+# Graphify generated knowledge graph and machine-local cache
+/graphify-out/

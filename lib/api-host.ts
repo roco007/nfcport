@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE_URL, getApiBaseUrl } from "@/constants/oauth";
+import { clearBackgroundNfcConfig } from "./nfc/background-routing";
 
 const API_HOST_STORAGE_KEY = "nfcport_api_host";
 let currentApiHost = getApiBaseUrl();
@@ -21,10 +22,14 @@ export async function saveConfiguredApiHost(host: string): Promise<void> {
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       throw new Error("Host URL must start with http:// or https://");
     }
+  }
+  const nextHost = normalizedHost || API_BASE_URL || getApiBaseUrl();
+  // Validate first: a rejected input must not erase a working offline mapping.
+  if (nextHost !== currentApiHost) clearBackgroundNfcConfig();
+  if (normalizedHost) {
     await AsyncStorage.setItem(API_HOST_STORAGE_KEY, normalizedHost);
-    currentApiHost = normalizedHost;
   } else {
     await AsyncStorage.removeItem(API_HOST_STORAGE_KEY);
-    currentApiHost = API_BASE_URL || getApiBaseUrl();
   }
+  currentApiHost = nextHost;
 }

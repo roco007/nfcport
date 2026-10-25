@@ -30,7 +30,9 @@ async function startServer() {
 
   app.get("/api/nfc-config", async (_req, res) => {
     try {
-      const configPath = process.env.NFC_CONFIG_PATH || path.resolve(process.cwd(), "backend/nfc-config.json");
+      const configPath =
+        process.env.NFC_CONFIG_PATH ||
+        path.resolve(process.cwd(), "backend/nfc-config.json");
       const config = JSON.parse(await readFile(configPath, "utf8"));
       res.setHeader("Cache-Control", "no-store");
       res.json(config);
@@ -49,7 +51,7 @@ async function startServer() {
   );
 
   const port = parseInt(process.env.PORT || "3000");
-  server.listen(port, () => {
+  server.listen(port, process.env.HOST, () => {
     console.log("[api] server listening");
   });
 }
