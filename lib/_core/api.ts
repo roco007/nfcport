@@ -93,7 +93,16 @@ export async function apiCall<T>(
     console.log("[API] Text response received");
     return (text ? JSON.parse(text) : {}) as T;
   } catch (error) {
-    console.error("[API] Request failed");
+    // An aborted signal alone can also accompany an unrelated request failure.
+    const cancelled =
+      options.signal?.aborted &&
+      ((typeof error === "object" &&
+        error !== null &&
+        "name" in error &&
+        error.name === "AbortError") ||
+        (options.signal.reason !== undefined &&
+          error === options.signal.reason));
+    if (!cancelled) console.error("[API] Request failed");
     if (error instanceof Error) {
       throw error;
     }
